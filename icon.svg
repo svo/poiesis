@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <!-- Background -->
+  <circle cx="256" cy="256" r="256" fill="#0f172a"/>
+
+  <!-- Subtle radial glow behind the structure -->
+  <circle cx="256" cy="240" r="160" fill="url(#bgGlow)" opacity="0.3"/>
+
+  <!-- Emerging scaffold structure — three nested brackets growing outward -->
+  <!-- Outermost bracket pair (most formed) -->
+  <g opacity="0.9">
+    <path d="M120 160 L152 160 L152 176 L136 176 L136 320 L152 320 L152 336 L120 336 Z" fill="#3b82f6"/>
+    <path d="M392 160 L360 160 L360 176 L376 176 L376 320 L360 320 L360 336 L392 336 Z" fill="#3b82f6"/>
+  </g>
+
+  <!-- Middle bracket pair -->
+  <g opacity="0.6">
+    <path d="M88 120 L120 120 L120 136 L104 136 L104 360 L120 360 L120 376 L88 376 Z" fill="#60a5fa"/>
+    <path d="M424 120 L392 120 L392 136 L408 136 L408 360 L392 360 L392 376 L424 376 Z" fill="#60a5fa"/>
+  </g>
+
+  <!-- Outermost bracket pair (most ethereal) -->
+  <g opacity="0.3">
+    <path d="M56 80 L88 80 L88 96 L72 96 L72 400 L88 400 L88 416 L56 416 Z" fill="#93c5fd"/>
+    <path d="M456 80 L424 80 L424 96 L440 96 L440 400 L424 400 L424 416 L456 416 Z" fill="#93c5fd"/>
+  </g>
+
+  <!-- Central emerging shape — a document/page transforming into structure -->
+  <!-- Page base -->
+  <rect x="184" y="152" width="144" height="192" rx="4" fill="#1e293b" stroke="#475569" stroke-width="1.5"/>
+
+  <!-- Dog-ear fold on the page -->
+  <path d="M296 152 L328 152 L328 184 Z" fill="#334155" stroke="#475569" stroke-width="1"/>
+
+  <!-- Text lines on the page (representing blog content) — fading upward -->
+  <g opacity="0.25">
+    <rect x="204" y="180" width="80" height="4" rx="2" fill="#94a3b8"/>
+    <rect x="204" y="194" width="100" height="4" rx="2" fill="#94a3b8"/>
+    <rect x="204" y="208" width="60" height="4" rx="2" fill="#94a3b8"/>
+  </g>
+
+  <!-- Structure lines (representing scaffolded code) — becoming solid -->
+  <g opacity="0.5">
+    <rect x="204" y="232" width="40" height="4" rx="2" fill="#3b82f6"/>
+    <rect x="216" y="246" width="72" height="4" rx="2" fill="#3b82f6"/>
+    <rect x="216" y="260" width="56" height="4" rx="2" fill="#3b82f6"/>
+    <rect x="204" y="274" width="40" height="4" rx="2" fill="#3b82f6"/>
+  </g>
+
+  <!-- Fully formed code at the bottom -->
+  <g opacity="0.8">
+    <rect x="204" y="298" width="48" height="4" rx="2" fill="#60a5fa"/>
+    <rect x="216" y="312" width="80" height="4" rx="2" fill="#60a5fa"/>
+    <rect x="204" y="326" width="36" height="4" rx="2" fill="#60a5fa"/>
+  </g>
+
+  <!-- Upward emergence arrow/spark — something being brought forth -->
+  <g transform="translate(256, 108)">
+    <path d="M0 0 L-10 20 L-4 18 L-4 36 L4 36 L4 18 L10 20 Z" fill="#e2e8f0" opacity="0.6"/>
+  </g>
+
+  <!-- Small sparkle particles rising (bringing-forth) -->
+  <circle cx="230" cy="130" r="2.5" fill="#93c5fd" opacity="0.5"/>
+  <circle cx="280" cy="118" r="2" fill="#93c5fd" opacity="0.4"/>
+  <circle cx="248" cy="100" r="1.5" fill="#e2e8f0" opacity="0.3"/>
+  <circle cx="270" cy="92" r="2" fill="#e2e8f0" opacity="0.2"/>
+
+  <!-- Greek pi (π) subtly in the page — poiesis -->
+  <text x="310" y="340" text-anchor="middle" font-family="serif" font-size="22" fill="#475569" opacity="0.35">π</text>
+
+  <defs>
+    <radialGradient id="bgGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#0f172a" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+</svg>

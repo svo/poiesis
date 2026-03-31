@@ -1,0 +1,34 @@
+- name: Install prerequisites for GitHub CLI
+  ansible.builtin.apt:
+    name:
+      - curl
+      - gpg
+    state: present
+  become: true
+
+- name: Create keyrings directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+  become: true
+
+- name: Download GitHub CLI GPG key
+  ansible.builtin.get_url:
+    url: https://cli.github.com/packages/githubcli-archive-keyring.gpg
+    dest: /etc/apt/keyrings/githubcli-archive-keyring.gpg
+    mode: '0644'
+  become: true
+
+- name: Add GitHub CLI repository
+  ansible.builtin.apt_repository:
+    repo: 'deb [arch={{ ansible_architecture | regex_replace("x86_64", "amd64") | regex_replace("aarch64", "arm64") }} signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main'
+    state: present
+    filename: github-cli
+  become: true
+
+- name: Install GitHub CLI
+  ansible.builtin.apt:
+    name: gh
+    update_cache: true
+  become: true

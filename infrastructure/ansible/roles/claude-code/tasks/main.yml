@@ -1,0 +1,67 @@
+- name: Install Claude Code
+  community.general.npm:
+    name: '@anthropic-ai/claude-code'
+    global: true
+  become: true
+
+- name: Add Context7 MCP Server to Claude Code
+  ansible.builtin.shell: >
+    claude mcp add --transport http --scope user context7 https://mcp.context7.com/mcp
+  register: claude_mcp_add_context7
+  changed_when: "'Added MCP server' in claude_mcp_add_context7.stdout or 'Successfully added' in claude_mcp_add_context7.stdout"
+  failed_when: false
+
+- name: Add Sequential Thinking MCP Server to Claude Code
+  ansible.builtin.shell: >
+    claude mcp add --scope user sequential-thinking npx -- -y @modelcontextprotocol/server-sequential-thinking
+  register: claude_mcp_add_sequential
+  changed_when: "'Added MCP server' in claude_mcp_add_sequential.stdout or 'Successfully added' in claude_mcp_add_sequential.stdout"
+  failed_when: false
+
+- name: Create global Claude Code skills directories
+  ansible.builtin.file:
+    path: "/root/.claude/skills/{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - sequential-thinking
+    - specify
+    - plan
+    - scaffold-services
+    - add-integration
+    - shared-schema
+    - run-service
+    - explore-architecture
+    - health-check
+  become: true
+
+- name: Install Claude Code skills
+  ansible.builtin.copy:
+    src: "skills/{{ item }}/SKILL.md"
+    dest: "/root/.claude/skills/{{ item }}/SKILL.md"
+    mode: '0644'
+  loop:
+    - sequential-thinking
+    - specify
+    - plan
+    - scaffold-services
+    - add-integration
+    - shared-schema
+    - run-service
+    - explore-architecture
+    - health-check
+  become: true
+
+- name: Create prompts directory
+  ansible.builtin.file:
+    path: /root/.claude/prompts
+    state: directory
+    mode: '0755'
+  become: true
+
+- name: Install scaffold project prompt
+  ansible.builtin.copy:
+    src: prompts/scaffold-project.md
+    dest: /root/.claude/prompts/scaffold-project.md
+    mode: '0644'
+  become: true

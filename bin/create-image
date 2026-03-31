@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+image=$1 &&
+architecture=$2 &&
+
+packer init "infrastructure/packer/${image}.pkr.hcl" &&
+
+if [ -z "$architecture" ]; then
+  packer build -color=false "infrastructure/packer/${image}.pkr.hcl"
+else
+  packer build -only="docker.${architecture}" -color=false "infrastructure/packer/${image}.pkr.hcl"
+fi
