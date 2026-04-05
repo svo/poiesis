@@ -138,8 +138,10 @@ docker run -d \
 
 By default, Claude Code uses the same `ANTHROPIC_API_KEY` as OpenClaw. If you have a Claude Pro or Max subscription, you can configure Claude Code to use it instead — this keeps API key costs for OpenClaw only, while Claude Code's usage is covered by the subscription.
 
-1. Generate a long-lived OAuth token from your Claude account settings
-2. Pass it as an environment variable:
+1. Start the container without `CLAUDE_CODE_OAUTH_TOKEN`
+2. Run `docker exec -it poiesis claude setup-token` — it will display a URL
+3. Open the URL in your browser and complete the authentication to generate a long-lived OAuth token (valid for 1 year)
+4. Restart the container with the token as an environment variable:
 
 ```bash
 docker run -d \
