@@ -13,4 +13,5 @@
     - git
     - github-cli
     - claude-code
+    - claude-code-service
     - openclaw

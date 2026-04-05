@@ -4,22 +4,12 @@
     global: true
   become: true
 
-- name: Create claude user for non-root Claude Code execution
-  ansible.builtin.user:
-    name: claude
-    system: true
-    create_home: true
-    shell: /bin/bash
-  become: true
-
 - name: Add Context7 MCP Server to Claude Code
   ansible.builtin.shell: >
     claude mcp add --transport http --scope user context7 https://mcp.context7.com/mcp
   register: claude_mcp_add_context7
   changed_when: "'Added MCP server' in claude_mcp_add_context7.stdout or 'Successfully added' in claude_mcp_add_context7.stdout"
   failed_when: false
-  become: true
-  become_user: claude
 
 - name: Add Sequential Thinking MCP Server to Claude Code
   ansible.builtin.shell: >
@@ -27,61 +17,3 @@
   register: claude_mcp_add_sequential
   changed_when: "'Added MCP server' in claude_mcp_add_sequential.stdout or 'Successfully added' in claude_mcp_add_sequential.stdout"
   failed_when: false
-  become: true
-  become_user: claude
-
-- name: Create Claude Code skills directories
-  ansible.builtin.file:
-    path: "/home/claude/.claude/skills/{{ item }}"
-    state: directory
-    owner: claude
-    group: claude
-    mode: '0755'
-  loop:
-    - sequential-thinking
-    - specify
-    - plan
-    - scaffold-services
-    - add-integration
-    - shared-schema
-    - run-service
-    - explore-architecture
-    - health-check
-  become: true
-
-- name: Install Claude Code skills
-  ansible.builtin.copy:
-    src: "skills/{{ item }}/SKILL.md"
-    dest: "/home/claude/.claude/skills/{{ item }}/SKILL.md"
-    owner: claude
-    group: claude
-    mode: '0644'
-  loop:
-    - sequential-thinking
-    - specify
-    - plan
-    - scaffold-services
-    - add-integration
-    - shared-schema
-    - run-service
-    - explore-architecture
-    - health-check
-  become: true
-
-- name: Create prompts directory
-  ansible.builtin.file:
-    path: /home/claude/.claude/prompts
-    state: directory
-    owner: claude
-    group: claude
-    mode: '0755'
-  become: true
-
-- name: Install scaffold project prompt
-  ansible.builtin.copy:
-    src: prompts/scaffold-project.md
-    dest: /home/claude/.claude/prompts/scaffold-project.md
-    owner: claude
-    group: claude
-    mode: '0644'
-  become: true
