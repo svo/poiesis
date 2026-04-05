@@ -58,11 +58,12 @@ docker run -d \
   -e POIESIS_CRON_SCHEDULE="0 8 * * 1" \
   -e POIESIS_TIMEZONE="Australia/Melbourne" \
   -v /opt/poiesis/data:/root/.openclaw \
+  -v /opt/poiesis/claude:/root/.claude \
   -p 127.0.0.1:3000:3000 \
   svanosselaer/poiesis-service:latest
 ```
 
-On first run, the entrypoint automatically configures OpenClaw via non-interactive onboarding and sets up web search, web fetch, and messaging access. Configuration is persisted to the volume at `/root/.openclaw` so subsequent starts skip onboarding.
+On first run, the entrypoint automatically configures OpenClaw via non-interactive onboarding and sets up web search, web fetch, and messaging access. Configuration is persisted to the volumes at `/root/.openclaw` and `/root/.claude` so subsequent starts skip onboarding.
 
 ## Environment Variables
 
@@ -101,6 +102,7 @@ docker run -d \
   -e TELEGRAM_BOT_TOKEN="your-telegram-bot-token" \
   -e TELEGRAM_ALLOW_FROM="your-telegram-user-id" \
   -v /opt/poiesis/data:/root/.openclaw \
+  -v /opt/poiesis/claude:/root/.claude \
   -p 127.0.0.1:3000:3000 \
   svanosselaer/poiesis-service:latest
 ```
@@ -129,27 +131,24 @@ docker run -d \
   -e SLACK_BOT_TOKEN="xoxb-your-slack-bot-token" \
   -e SLACK_APP_TOKEN="xapp-your-slack-app-token" \
   -v /opt/poiesis/data:/root/.openclaw \
+  -v /opt/poiesis/claude:/root/.claude \
   -p 127.0.0.1:3000:3000 \
   svanosselaer/poiesis-service:latest
 ```
 
-## Switching from API Key to Claude Subscription
+## Using a Claude Subscription for Claude Code
 
-If you have a Claude Pro or Max subscription, you can use it instead of an API key.
+By default, Claude Code uses the same `ANTHROPIC_API_KEY` as OpenClaw. If you have a Claude Pro or Max subscription, you can configure Claude Code to use it instead — this keeps API key costs for OpenClaw only, while Claude Code's usage is covered by the subscription.
 
-1. On a machine with Claude Code installed, generate a setup token:
+1. On a machine with Claude Code authenticated via subscription, generate a setup token:
    ```bash
    claude setup-token
    ```
-2. Copy the token and paste it into the running container:
+2. Paste the token into the running container:
    ```bash
-   docker exec -it poiesis openclaw models auth paste-token --provider anthropic
+   docker exec -it poiesis claude setup-token
    ```
-
-3. Set the subscription as the default auth method:
-   ```bash
-   docker exec -it poiesis openclaw models auth order set --provider anthropic anthropic:manual anthropic:default
-   ```
+3. The credentials are persisted to the `/root/.claude` volume. On subsequent runs, the entrypoint detects the subscription and automatically uses it for Claude Code while OpenClaw continues to use the API key.
 
 ## Workspace Instructions
 
