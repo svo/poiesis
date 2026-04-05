@@ -181,12 +181,14 @@ When you identify a qualifying blog post:
    and implement the initial version:
    \`\`\`bash
    cd /tmp/project-name
-   claude -p "\$(cat /root/.claude/prompts/scaffold-project.md)" --dangerously-skip-permissions
+   runuser -u claude -- claude -p "\$(cat /home/claude/.claude/prompts/scaffold-project.md)" \
+     --dangerously-skip-permissions
    \`\`\`
+   Claude Code runs as the \`claude\` user (not root) to allow \`--dangerously-skip-permissions\`.
    If \`CLAUDE_CODE_OAUTH_TOKEN\` is set, Claude Code uses the subscription. Otherwise it
    falls back to \`ANTHROPIC_API_KEY\`. It has access to skills for scaffolding services,
-   creating specs and plans, managing shared schemas, and more — installed globally at
-   \`/root/.claude/skills/\`. Do NOT use \`--bare\` — Claude Code must read the project's
+   creating specs and plans, managing shared schemas, and more — installed at
+   \`/home/claude/.claude/skills/\`. Do NOT use \`--bare\` — Claude Code must read the project's
    CLAUDE.md for context.
 5. **Notify** — send a message to the configured messaging channel (Telegram or Slack)
    with a summary of what was created. The message should include:
