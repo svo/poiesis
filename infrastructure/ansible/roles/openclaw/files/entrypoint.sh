@@ -43,6 +43,8 @@ node -e "
   delete config.tools.allow;
   config.tools.deny = ['gateway'];
   config.cron = { enabled: true };
+  config.env = config.env || {};
+  config.env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
   delete config.agent;
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
 "
