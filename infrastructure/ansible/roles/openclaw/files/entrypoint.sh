@@ -75,6 +75,7 @@ if [ -z "${GITHUB_TOKEN:-}" ]; then
 fi
 
 gh auth setup-git
+runuser -u claude -- gh auth setup-git
 
 mkdir -p "$HOME/.openclaw/workspace"
 
