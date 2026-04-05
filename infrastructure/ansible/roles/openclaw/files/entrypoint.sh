@@ -179,19 +179,12 @@ When you identify a qualifying blog post:
 4. **Build with Claude Code** — clone the new repository and run Claude Code using the
    scaffold prompt to decompose the concept into services, create repos from templates,
    and implement the initial version:
-   If Claude Code has been authenticated with a subscription (via \`claude setup-token\`),
-   unset the API key so it uses the subscription instead:
    \`\`\`bash
    cd /tmp/project-name
-   if claude auth status 2>/dev/null | grep -q '"loggedIn": true'; then
-     env -u ANTHROPIC_API_KEY claude -p "\$(cat /root/.claude/prompts/scaffold-project.md)" --dangerously-skip-permissions
-   else
-     claude -p "\$(cat /root/.claude/prompts/scaffold-project.md)" --dangerously-skip-permissions
-   fi
+   claude -p "\$(cat /root/.claude/prompts/scaffold-project.md)" --dangerously-skip-permissions
    \`\`\`
-   By default, Claude Code uses \`ANTHROPIC_API_KEY\` (shared with OpenClaw). If a subscription
-   has been configured, the API key is unset for the Claude Code invocation so it falls through
-   to the cached subscription credentials. It has access to skills for scaffolding services,
+   If \`CLAUDE_CODE_OAUTH_TOKEN\` is set, Claude Code uses the subscription. Otherwise it
+   falls back to \`ANTHROPIC_API_KEY\`. It has access to skills for scaffolding services,
    creating specs and plans, managing shared schemas, and more — installed globally at
    \`/root/.claude/skills/\`. Do NOT use \`--bare\` — Claude Code must read the project's
    CLAUDE.md for context.

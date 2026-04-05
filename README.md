@@ -58,18 +58,18 @@ docker run -d \
   -e POIESIS_CRON_SCHEDULE="0 8 * * 1" \
   -e POIESIS_TIMEZONE="Australia/Melbourne" \
   -v /opt/poiesis/data:/root/.openclaw \
-  -v /opt/poiesis/claude:/root/.claude \
   -p 127.0.0.1:3000:3000 \
   svanosselaer/poiesis-service:latest
 ```
 
-On first run, the entrypoint automatically configures OpenClaw via non-interactive onboarding and sets up web search, web fetch, and messaging access. Configuration is persisted to the volumes at `/root/.openclaw` and `/root/.claude` so subsequent starts skip onboarding.
+On first run, the entrypoint automatically configures OpenClaw via non-interactive onboarding and sets up web search, web fetch, and messaging access. Configuration is persisted to the volume at `/root/.openclaw` so subsequent starts skip onboarding.
 
 ## Environment Variables
 
 | Variable | Required | Description |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | Yes | Anthropic API key for the OpenClaw gateway |
+| `ANTHROPIC_API_KEY` | Yes | Anthropic API key for OpenClaw (and Claude Code if no subscription token is set) |
+| `CLAUDE_CODE_OAUTH_TOKEN` | No | Claude subscription OAuth token for Claude Code — if set, Claude Code uses the subscription instead of the API key |
 | `GITHUB_TOKEN` | Yes | GitHub personal access token with `repo` scope for creating repositories |
 | `BRAVE_API_KEY` | No | [Brave Search API](https://brave.com/search/api/) key for web search |
 | `FIRECRAWL_API_KEY` | No | [Firecrawl](https://firecrawl.dev) API key for enhanced web scraping |
@@ -102,7 +102,6 @@ docker run -d \
   -e TELEGRAM_BOT_TOKEN="your-telegram-bot-token" \
   -e TELEGRAM_ALLOW_FROM="your-telegram-user-id" \
   -v /opt/poiesis/data:/root/.openclaw \
-  -v /opt/poiesis/claude:/root/.claude \
   -p 127.0.0.1:3000:3000 \
   svanosselaer/poiesis-service:latest
 ```
@@ -131,7 +130,6 @@ docker run -d \
   -e SLACK_BOT_TOKEN="xoxb-your-slack-bot-token" \
   -e SLACK_APP_TOKEN="xapp-your-slack-app-token" \
   -v /opt/poiesis/data:/root/.openclaw \
-  -v /opt/poiesis/claude:/root/.claude \
   -p 127.0.0.1:3000:3000 \
   svanosselaer/poiesis-service:latest
 ```
@@ -140,15 +138,26 @@ docker run -d \
 
 By default, Claude Code uses the same `ANTHROPIC_API_KEY` as OpenClaw. If you have a Claude Pro or Max subscription, you can configure Claude Code to use it instead — this keeps API key costs for OpenClaw only, while Claude Code's usage is covered by the subscription.
 
-1. On a machine with Claude Code authenticated via subscription, generate a setup token:
-   ```bash
-   claude setup-token
-   ```
-2. Paste the token into the running container:
-   ```bash
-   docker exec -it poiesis claude setup-token
-   ```
-3. The credentials are persisted to the `/root/.claude` volume. On subsequent runs, the entrypoint detects the subscription and automatically uses it for Claude Code while OpenClaw continues to use the API key.
+1. Generate a long-lived OAuth token from your Claude account settings
+2. Pass it as an environment variable:
+
+```bash
+docker run -d \
+  --name poiesis \
+  --restart unless-stopped \
+  -e ANTHROPIC_API_KEY="your-api-key" \
+  -e CLAUDE_CODE_OAUTH_TOKEN="sk-ant-oat01-..." \
+  -e GITHUB_TOKEN="your-github-token" \
+  -e POIESIS_BLOG_URL="https://www.qual.is/blog" \
+  -e POIESIS_GITHUB_OWNER="svo" \
+  -e POIESIS_CRON_SCHEDULE="0 8 * * 1" \
+  -e POIESIS_TIMEZONE="Australia/Melbourne" \
+  -v /opt/poiesis/data:/root/.openclaw \
+  -p 127.0.0.1:3000:3000 \
+  svanosselaer/poiesis-service:latest
+```
+
+When `CLAUDE_CODE_OAUTH_TOKEN` is set, Claude Code uses the subscription automatically. OpenClaw continues to use `ANTHROPIC_API_KEY`. The token is valid for 1 year.
 
 ## Workspace Instructions
 
