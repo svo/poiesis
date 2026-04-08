@@ -77,11 +77,14 @@
     mode: '0755'
   become: true
 
-- name: Install scaffold project prompt
+- name: Install Claude Code prompts
   ansible.builtin.copy:
-    src: prompts/scaffold-project.md
-    dest: /home/claude/.claude/prompts/scaffold-project.md
+    src: "prompts/{{ item }}"
+    dest: "/home/claude/.claude/prompts/{{ item }}"
     owner: claude
     group: claude
     mode: '0644'
+  loop:
+    - scaffold-project.md
+    - monitor-and-scaffold.md
   become: true
