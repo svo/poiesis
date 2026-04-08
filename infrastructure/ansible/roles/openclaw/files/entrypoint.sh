@@ -48,7 +48,7 @@ node -e "
   config.agents = config.agents || {};
   config.agents.defaults = config.agents.defaults || {};
   config.agents.defaults.skipBootstrap = true;
-  config.agents.defaults.model = 'opus';
+  config.agents.defaults.model = 'sonnet';
   config.agents.defaults.heartbeat = {
     every: '59m',
     target: 'last',
