@@ -48,6 +48,22 @@ node -e "
   config.agents = config.agents || {};
   config.agents.defaults = config.agents.defaults || {};
   config.agents.defaults.skipBootstrap = true;
+  config.agents.defaults.model = 'opus';
+  config.agents.defaults.heartbeat = {
+    every: '59m',
+    target: 'last',
+    model: 'haiku',
+    lightContext: true
+  };
+  config.agents.defaults.compaction = { model: 'haiku' };
+  config.agents.defaults.models = {
+    'anthropic/claude-opus-4-6': {
+      params: { cacheRetention: 'long' }
+    },
+    'anthropic/claude-haiku-4-5': {
+      params: { cacheRetention: 'long' }
+    }
+  };
   config.tools = config.tools || {};
   config.tools.profile = 'full';
   delete config.tools.allow;
