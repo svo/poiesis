@@ -48,14 +48,14 @@ node -e "
   config.agents = config.agents || {};
   config.agents.defaults = config.agents.defaults || {};
   config.agents.defaults.skipBootstrap = true;
-  config.agents.defaults.model = 'sonnet';
+  config.agents.defaults.model = 'anthropic/claude-sonnet-4-6';
   config.agents.defaults.heartbeat = {
     every: '59m',
     target: 'last',
-    model: 'haiku',
+    model: 'anthropic/claude-haiku-4-5',
     lightContext: true
   };
-  config.agents.defaults.compaction = { model: 'haiku' };
+  config.agents.defaults.compaction = { model: 'anthropic/claude-haiku-4-5' };
   config.agents.defaults.models = {
     'anthropic/claude-opus-4-6': {
       params: { cacheRetention: 'long' }
