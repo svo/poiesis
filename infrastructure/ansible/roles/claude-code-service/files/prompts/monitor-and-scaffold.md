@@ -40,6 +40,7 @@ For each new concept, create and seed the repository:
 ```bash
 gh repo create ${GITHUB_OWNER}/${project-name} --private \
   --description "<description from blog post>"
+gh api repos/${GITHUB_OWNER}/${project-name}/actions/permissions --method PUT -F enabled=false
 ```
 
 Clone the repository and seed it with:
@@ -69,6 +70,7 @@ For each service, create a GitHub repo from the appropriate template:
 ```bash
 gh repo create ${GITHUB_OWNER}/${project-name}-${service} \
   --template svo/python-sprint-zero --private
+gh api repos/${GITHUB_OWNER}/${project-name}-${service}/actions/permissions --method PUT -F enabled=false
 ```
 
 For frontend services use `svo/www-qual-is` instead.

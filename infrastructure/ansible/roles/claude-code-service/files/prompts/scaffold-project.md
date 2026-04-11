@@ -21,6 +21,7 @@ For each service, create a GitHub repo from the appropriate template:
 ```bash
 gh repo create ${GITHUB_OWNER}/${PROJECT_NAME}-${service} \
   --template svo/python-sprint-zero --private
+gh api repos/${GITHUB_OWNER}/${PROJECT_NAME}-${service}/actions/permissions --method PUT -F enabled=false
 ```
 
 For frontend services use `svo/www-qual-is` instead.

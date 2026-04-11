@@ -27,6 +27,7 @@ Arguments:
 
 ```bash
 gh repo create ${GITHUB_OWNER}/${PROJECT_NAME}-$0 --template svo/$1-sprint-zero --private
+gh api repos/${GITHUB_OWNER}/${PROJECT_NAME}-$0/actions/permissions --method PUT -F enabled=false
 ```
 
 For frontend template use `svo/www-qual-is` instead.
