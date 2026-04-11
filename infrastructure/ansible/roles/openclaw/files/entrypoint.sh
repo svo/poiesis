@@ -103,6 +103,10 @@ fi
 gh auth setup-git
 runuser -u claude -- gh auth setup-git
 
+# Ensure git always uses clean HTTPS URLs — never embed tokens in .gitmodules
+git config --global url."https://github.com/".insteadOf "git@github.com:"
+runuser -u claude -- git config --global url."https://github.com/".insteadOf "git@github.com:"
+
 mkdir -p "$HOME/.openclaw/workspace"
 
 cat > "$HOME/.openclaw/workspace/IDENTITY.md" <<'IDENTITY'

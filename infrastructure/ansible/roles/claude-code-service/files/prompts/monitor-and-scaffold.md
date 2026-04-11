@@ -76,7 +76,7 @@ For frontend services use `svo/www-qual-is` instead.
 Add each as a submodule:
 
 ```bash
-git submodule add git@github.com:${GITHUB_OWNER}/${project-name}-${service}.git services/${service}
+git submodule add https://github.com/${GITHUB_OWNER}/${project-name}-${service}.git services/${service}
 ```
 
 Frontend goes under `ui/` instead of `services/`.

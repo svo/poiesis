@@ -35,12 +35,12 @@ For frontend template use `svo/www-qual-is` instead.
 
 For backend services:
 ```bash
-git submodule add git@github.com:${GITHUB_OWNER}/${PROJECT_NAME}-$0.git services/$0
+git submodule add https://github.com/${GITHUB_OWNER}/${PROJECT_NAME}-$0.git services/$0
 ```
 
 For frontend:
 ```bash
-git submodule add git@github.com:${GITHUB_OWNER}/${PROJECT_NAME}-$0.git ui
+git submodule add https://github.com/${GITHUB_OWNER}/${PROJECT_NAME}-$0.git ui
 ```
 
 4. **Rename template references** (Python services only):
