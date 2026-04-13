@@ -71,6 +71,9 @@ node -e "
   config.cron = { enabled: true };
   config.env = config.env || {};
   config.env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+  if (process.env.GITHUB_TOKEN) {
+    config.env.GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+  }
   delete config.agent;
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
 "
