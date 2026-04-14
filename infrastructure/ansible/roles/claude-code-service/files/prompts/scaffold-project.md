@@ -26,6 +26,8 @@ gh api repos/${GITHUB_OWNER}/${PROJECT_NAME}-${service}/actions/permissions --me
 
 For frontend services use `svo/www-qual-is` instead.
 
+**Do not remove `.github/workflows` from any service repository.** The workflows are disabled at the repo level and will be re-enabled later.
+
 Add each as a submodule:
 
 ```bash

@@ -32,6 +32,8 @@ gh api repos/${GITHUB_OWNER}/${PROJECT_NAME}-$0/actions/permissions --method PUT
 
 For frontend template use `svo/www-qual-is` instead.
 
+**Do not remove `.github/workflows` from the service repository.** The workflows are disabled at the repo level and will be re-enabled later.
+
 3. **Add as submodule:**
 
 For backend services:
