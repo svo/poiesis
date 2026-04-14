@@ -57,9 +57,13 @@
     - github-cli
     - python
     - node
+    - pipx
+    - semgrep
     - ansible
     - docker
     - packer
+    - pyscaffold
+    - tox
     - claude-code
     - shellcheck
     - ansible-lint

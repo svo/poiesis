@@ -6,9 +6,12 @@
     - git
     - python
     - node
+    - pipx
+    - semgrep
     - ansible
     - docker
     - packer
+    - tox
     - shellcheck
     - ansible-lint
 

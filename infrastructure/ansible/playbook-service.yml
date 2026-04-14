@@ -9,8 +9,14 @@
       become: true
 
   roles:
-    - node
     - git
     - github-cli
+    - python
+    - node
+    - pipx
+    - semgrep
+    - tox
     - claude-code-service
     - openclaw
+    - shellcheck
+    - ansible-lint
