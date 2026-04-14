@@ -54,6 +54,7 @@
 
   roles:
     - git
+    - github-cli
     - python
     - node
     - ansible
