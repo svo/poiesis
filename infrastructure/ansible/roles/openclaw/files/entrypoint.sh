@@ -103,8 +103,8 @@ if [ -z "${GITHUB_TOKEN:-}" ]; then
   exit 1
 fi
 
-echo "$GITHUB_TOKEN" | gh auth login --with-token
-echo "$GITHUB_TOKEN" | runuser -u claude -- gh auth login --with-token
+echo "$GITHUB_TOKEN" | env -u GITHUB_TOKEN -u GH_TOKEN gh auth login --with-token
+echo "$GITHUB_TOKEN" | env -u GITHUB_TOKEN -u GH_TOKEN runuser -u claude -- gh auth login --with-token
 gh auth setup-git
 runuser -u claude -- gh auth setup-git
 
