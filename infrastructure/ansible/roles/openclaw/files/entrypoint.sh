@@ -98,6 +98,13 @@ if [ ${#missing[@]} -gt 0 ]; then
   exit 1
 fi
 
+POIESIS_HOST_PORT_PREFIX="${POIESIS_HOST_PORT_PREFIX:-3}"
+if ! [[ "$POIESIS_HOST_PORT_PREFIX" =~ ^[1-9]$ ]]; then
+  echo "Warning: POIESIS_HOST_PORT_PREFIX='${POIESIS_HOST_PORT_PREFIX}' is not a single digit 1-9; falling back to default '3'" >&2
+  POIESIS_HOST_PORT_PREFIX=3
+fi
+export POIESIS_HOST_PORT_PREFIX
+
 if [ -z "${GITHUB_TOKEN:-}" ]; then
   echo "Error: GITHUB_TOKEN is required for GitHub access" >&2
   exit 1
@@ -210,6 +217,18 @@ the configured messaging channel (Telegram or Slack) for each new project with:
 If the output contains \`NO_NEW_PROJECTS\`, do nothing.
 
 If no messaging channel is configured, write the summary to a file in the workspace instead.
+
+## Scaffolding configuration
+
+When Claude Code scaffolds a project, it must use the following host-port prefix
+for every host-mapped port in the generated Vagrantfile and in any document
+that references those ports (parent CLAUDE.md, README.md, .specs/initial/SPEC.md):
+
+\`POIESIS_HOST_PORT_PREFIX\`: \`${POIESIS_HOST_PORT_PREFIX}\` (single digit 1-9; default 3)
+
+For example, with prefix \`${POIESIS_HOST_PORT_PREFIX}\` a guest port \`8001\` maps to host port
+\`${POIESIS_HOST_PORT_PREFIX}8001\` and a guest port \`3000\` maps to host port \`${POIESIS_HOST_PORT_PREFIX}3000\`. The scaffolder must not
+hard-code the prefix \`2\` or any other value — read this one.
 
 ## Context
 

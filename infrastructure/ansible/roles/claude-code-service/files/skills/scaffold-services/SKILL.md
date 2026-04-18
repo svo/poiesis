@@ -1,6 +1,6 @@
 ---
 name: scaffold-services
-description: Creates new service repositories from templates and adds them as git submodules. Handles repo creation from svo/python-sprint-zero or svo/www-qual-is templates, template reference renaming, port assignment, Vagrantfile updates, and CLAUDE.md configuration.
+description: Creates new service repositories from templates and adds them as git submodules. Handles repo creation from svo/python-sprint-zero or svo/www-qual-is templates, template purge, reference renaming, port assignment using POIESIS_HOST_PORT_PREFIX, Docker-provider Vagrantfile updates, docker-tag normalisation, and CLAUDE.md configuration. Frontend invocations also wire same-origin API proxy routes.
 disable-model-invocation: true
 allowed-tools: Bash(gh *), Bash(git *), Bash(cd *), Bash(find *), Bash(fgrep *), Bash(sed *), Bash(mv *), Read, Edit, Write, Grep, Glob
 ---
@@ -16,12 +16,14 @@ Creates new service repositories from templates and wires them into the project 
 Arguments:
 - `$0`: Service name in kebab-case (e.g. `event-processor`)
 - `$1`: Template — either `python` (uses `svo/python-sprint-zero`) or `frontend` (uses `svo/www-qual-is`)
-- `$2`: Port number (host port will have a `2` prefix, e.g. `8001` -> `28001`)
+- `$2`: Guest port (host port becomes `${PORT_PREFIX}$2` where `${PORT_PREFIX}` is read from the workspace `AGENTS.md`)
 - `$3`: One-line description of the service
+
+The host-port prefix is the value of `POIESIS_HOST_PORT_PREFIX` documented in the workspace `AGENTS.md` (single digit `1`–`9`, default `3`). Read it once at the start of the run and reuse it.
 
 ## Steps
 
-1. **Read the project's CLAUDE.md** to determine the GitHub owner and project name.
+1. **Read the project's CLAUDE.md** to determine the GitHub owner and project name. Read `~/.openclaw/workspace/AGENTS.md` to determine `${PORT_PREFIX}`.
 
 2. **Create the GitHub repo from template:**
 
@@ -34,7 +36,7 @@ For frontend template use `svo/www-qual-is` instead.
 
 **Do not remove `.github/workflows` from the service repository.** The workflows are disabled at the repo level and will be re-enabled later.
 
-3. **Add as submodule:**
+3. **Add as submodule** using the `https://github.com/...` form (the entrypoint rewrites SSH to HTTPS so tokens never reach `.gitmodules`):
 
 For backend services:
 ```bash
@@ -46,7 +48,17 @@ For frontend:
 git submodule add https://github.com/${GITHUB_OWNER}/${PROJECT_NAME}-$0.git ui
 ```
 
-4. **Rename template references** (Python services only):
+4. **Purge template scaffolding** by invoking the `/purge-template` skill immediately after the submodule is added, before any renaming:
+
+```bash
+# Backend
+/purge-template python-sprint-zero services/$0
+
+# Frontend
+/purge-template www-qual-is ui
+```
+
+5. **Rename template references** (Python services only):
 
 Derive the underscore and titlecase forms of the service name, then:
 
@@ -68,18 +80,77 @@ find . -depth -name "*python-sprint-zero*" | while read f; do
 done
 ```
 
-5. **Update Vagrantfile** — add the port mapping:
+6. **Update the parent Vagrantfile** — append a new `config.vm.define` block using the Docker provider. Do not use `config.vm.network "forwarded_port"` — every service is its own container.
+
+For a backend:
 
 ```ruby
-config.vm.network "forwarded_port", guest: $2, host: 2$2  # $0
+config.vm.define "$0" do |s|
+  s.vm.provider :docker do |d|
+    d.image = "${GITHUB_OWNER}/${PROJECT_NAME}-$0-service:latest"
+    d.name  = "${PROJECT_NAME}-$0"
+    d.ports = ["${PORT_PREFIX}$2:$2"]
+    d.env   = {
+      # One entry per other backend this service calls.
+      "APP_<OTHER_BACKEND>_URL" => "http://host.docker.internal:${PORT_PREFIX}<OTHER_GUEST_PORT>"
+    }
+  end
+end
 ```
 
-6. **Update the service's `.claude/CLAUDE.md`** — add a `## Project Purpose` section with `### Core Domain Concepts` subsection after the top-level title. Include the port assignment and service description.
+For a frontend:
 
-7. **Verify the docker-tag** in `infrastructure/packer/service.pkr.hcl` reflects the new service name.
+```ruby
+config.vm.define "$0" do |s|
+  s.vm.provider :docker do |d|
+    d.image = "${GITHUB_OWNER}/${PROJECT_NAME}-$0-service:latest"
+    d.name  = "${PROJECT_NAME}-$0"
+    d.ports = ["${PORT_PREFIX}$2:$2"]
+    d.env   = {
+      # One entry per backend the frontend proxies to. Server-only — never NEXT_PUBLIC_.
+      "<BACKEND>_URL" => "http://host.docker.internal:${PORT_PREFIX}<BACKEND_GUEST_PORT>"
+    }
+  end
+end
+```
 
-8. **Commit and push** the submodule changes, then update the parent repo's submodule reference.
+When this skill is invoked with `--template frontend`, also wire the API proxy route handlers — see "Frontend wiring" below.
+
+7. **Update the service's `.claude/CLAUDE.md`** — add a `## Project Purpose` section with `### Core Domain Concepts` subsection after the top-level title. Include the guest port and the host port (`${PORT_PREFIX}$2`).
+
+8. **Normalise the docker-tag** in `infrastructure/packer/service.pkr.hcl`. Edit the `docker-tag` value to exactly:
+
+```
+${GITHUB_OWNER}/${PROJECT_NAME}-$0-service
+```
+
+This applies to **both** backend and frontend services. For the frontend, verify the resulting tag does not contain the substring `www-qual-is`:
+
+```bash
+if fgrep -q 'www-qual-is' infrastructure/packer/service.pkr.hcl; then
+  echo 'docker-tag still references www-qual-is' >&2
+  exit 1
+fi
+```
+
+9. **Commit and push** the submodule changes, then update the parent repo's submodule reference.
+
+10. **Update the parent docs** (`CLAUDE.md`, `README.md`, and `.specs/initial/SPEC.md` if present) so every host-port and image-name reference matches what was actually generated. The Vagrantfile is the source of truth — the docs must agree with it.
+
+## Frontend wiring (`$1 == frontend`)
+
+When the template is `frontend`, also generate one Next.js App Router catch-all route handler per backend service the frontend talks to. This keeps the browser on same-origin URLs and avoids `NEXT_PUBLIC_*` / runtime-config injection.
+
+For each backend `<service>` create `ui/src/app/api/<service>/[...path]/route.ts` exporting `GET`, `POST`, `PUT`, `PATCH`, `DELETE` that:
+
+- Read `process.env.<SERVICE>_URL` (server-only — populated by the frontend's `docker.env` in Step 6).
+- Build `proxyURL = new URL(path.join('/') + request.nextUrl.search, UPSTREAM)`.
+- Forward via `fetch(new Request(proxyURL, request))` inside `try/catch`.
+- On `fetch` failure return HTTP 502 with a structured JSON error body (`{ error, service, detail }`).
+- If `<SERVICE>_URL` is unset, return HTTP 502 with `error: "upstream_not_configured"`.
+
+Then update the frontend's repository classes (`Http<Service>Repository` and similar) to call `/api/<service>/...` (same origin) and remove every `NEXT_PUBLIC_*_URL` reference plus any `window.__RUNTIME_CONFIG__` injection. The detailed code template lives in the `monitor-and-scaffold` and `scaffold-project` prompts — emit the same shape here so ad-hoc `/scaffold-services <name> frontend ...` runs match the cron flow.
 
 ## Port Convention
 
-Backend services start at port 8001 and increment. Frontend uses port 3000. Host-mapped ports have a `2` prefix (e.g. 8001 -> 28001, 3000 -> 23000).
+Backend guest ports start at `8001` and increment per service. The frontend uses guest port `3000`. Host ports are `${PORT_PREFIX}<guest>` where `${PORT_PREFIX}` is the single-digit value of `POIESIS_HOST_PORT_PREFIX` (default `3`). For example, with the default prefix, guest `8001` maps to host `38001` and guest `3000` maps to host `33000`.
