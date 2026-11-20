@@ -295,6 +295,9 @@ if [ -n "${SLACK_BOT_TOKEN:-}" ]; then
       botToken: process.env.SLACK_BOT_TOKEN,
       appToken: process.env.SLACK_APP_TOKEN
     };
+    config.plugins = config.plugins || {};
+    config.plugins.entries = config.plugins.entries || {};
+    config.plugins.entries.slack = Object.assign({}, config.plugins.entries.slack, { enabled: true });
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
   "
 fi

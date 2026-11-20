@@ -154,6 +154,8 @@ docker run -d \
   svanosselaer/poiesis-service:latest
 ```
 
+On startup, the entrypoint configures the Slack channel in socket mode and sets `plugins.entries.slack.enabled: true`. Slack is an external plugin that OpenClaw installs into the volume on first use, and it will not load an external plugin it has not been told to trust. Without that key the gateway logs `external plugin "slack" is installed without explicit trust` and never starts the channel.
+
 ## Using a Claude Subscription for Claude Code
 
 By default, Claude Code uses the same `ANTHROPIC_API_KEY` as OpenClaw. If you have a Claude Pro or Max subscription, you can configure Claude Code to use it instead — this keeps API key costs for OpenClaw only, while Claude Code's usage is covered by the subscription.
