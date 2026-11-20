@@ -42,6 +42,26 @@ Named after the Greek concept of bringing-forth — the act of making something 
 ./create-latest.sh service
 ```
 
+## Pinned Versions
+
+| What | Where | Currently |
+|---|---|---|
+| OpenClaw (service image) | `roles/openclaw/defaults/main.yml` → `openclaw_version` | `2026.9.37` |
+| Node.js major (all three images) | `roles/node/defaults/main.yml` → `node_major` + `node_minimum_version` | `26`, at least `26.12.1` |
+
+OpenClaw used to install with `state: latest`, so a rebuild that changed nothing in this repository could install a different gateway. OpenClaw checks the Node version at startup and exits on one it does not support: 2026.9.37 wants `>=24.22.1 <25 || >=26.12.1`, and the images used to install Node 22.
+
+### Bumping OpenClaw
+
+```bash
+npm view openclaw dist-tags                # what is published
+npm view openclaw@<version> engines        # the Node it needs
+```
+
+Set `openclaw_version`. If the release needs a newer Node, set `node_major` and `node_minimum_version`, and add the major being left to `node_retired_majors` so a machine provisioned again drops its repository. The build fails if the Node it installed is older than `node_minimum_version` or outside that major. A machine that already has Node keeps it when the repository changes; the check then fails the provisioning and says to run `apt-get install nodejs`. The Vagrant dev container hits this on `vagrant up` until `poiesis-development` is rebuilt.
+
+Check that the model ids in `entrypoint.sh` are in the new release's catalog (see [Models](#models)) before landing the bump.
+
 ## Running
 
 ```bash
@@ -62,7 +82,7 @@ docker run -d \
   svanosselaer/poiesis-service:latest
 ```
 
-On first run, the entrypoint automatically configures OpenClaw via non-interactive onboarding and sets up web search, web fetch, and messaging access. Configuration is persisted to the volume at `/root/.openclaw` so subsequent starts skip onboarding.
+On first run, the entrypoint automatically configures OpenClaw via non-interactive onboarding and sets up web search, web fetch, and messaging access. Configuration is persisted to the volume at `/root/.openclaw` so subsequent starts skip onboarding. Every start runs `openclaw doctor --fix` before the gateway — see [Doctor Runs on Every Start](#doctor-runs-on-every-start).
 
 ## Environment Variables
 
@@ -175,3 +195,69 @@ On startup, the entrypoint generates OpenClaw workspace files at `~/.openclaw/wo
 These files are injected into the agent's context at the start of every session, so Poiesis knows how to identify software concepts and scaffold projects immediately.
 
 All `POIESIS_*` variables are required — the container will fail on startup if any are missing. `GITHUB_TOKEN` is also required and validated separately.
+
+## Models
+
+The entrypoint writes these on every start. They are the gateway's models only: the scaffolding itself is done by Claude Code, which chooses its own.
+
+| Work | Model | Key |
+|---|---|---|
+| Scheduled cycles, chat, and the tasks they start | `anthropic/claude-opus-5-5` | `agents.defaults.model` |
+| Heartbeat | `anthropic/claude-haiku-5-5` | `agents.defaults.heartbeat.model` |
+| Compaction | `anthropic/claude-haiku-5-5` | `agents.defaults.compaction.model` |
+| Session titles, progress narration | `anthropic/claude-haiku-5-5` | none: OpenClaw's default small model for Anthropic |
+
+These replace Sonnet 4.6 for the default and Haiku 4.5 for the rest. Prices per million tokens, input and output:
+
+| Model | Input | Output |
+|---|---|---|
+| Opus 5.5 | $4 | $20 |
+| Haiku 5.5, prompt of 100,000 tokens or fewer | $0.10 | $0.50 |
+| Haiku 5.5, longer prompt | $0.50 | $2.50 |
+| Sonnet 4.6 (was the default) | $3 | $15 |
+| Haiku 4.5 (was heartbeat and compaction) | $1 | $5 |
+
+Both 5.5 models think on every request; OpenClaw runs them at medium effort. Each model has an entry under `agents.defaults.models` asking for an hour of prompt cache (`cacheRetention: long`); a model with no entry gets five minutes.
+
+`agents.defaults.modelPolicy.allow` lists the same two models, and decides what `/model` may switch a chat session to. It does not restrict the configured models above, or an automation that names its own model. Before OpenClaw 2026.8.1 the keys of `agents.defaults.models` did this job; on a volume from an older release, `openclaw doctor --fix` copies those keys into `modelPolicy.allow` once, which would have kept the retired `claude-opus-4-6` and `claude-haiku-4-5` there for good. The entrypoint writes the list itself instead.
+
+To change a model, edit `chatModel` or `utilityModel` in `entrypoint.sh`. A model set inside the container with `openclaw config set` lasts until the next start. To check that a model id is in the pinned release's catalog:
+
+```bash
+docker exec poiesis openclaw models list --provider anthropic --all
+```
+
+An automation registered with its own `--model` keeps that model when the defaults change:
+
+```bash
+docker exec poiesis openclaw automations list
+docker exec poiesis openclaw automations edit <id> --clear-model
+```
+
+## OpenClaw Configuration
+
+### Doctor Runs on Every Start
+
+`openclaw doctor --fix --non-interactive` runs on every start, after onboarding and before the entrypoint writes its configuration. The pinned gateway does not repair state an older release left behind: it exits with code 78. On a volume written by 2026.7.1 it says `OpenClaw state database schema migration required (audit-events-v2)`. OpenClaw's own container image runs doctor before every gateway start for this reason, and its documentation says a custom entrypoint has to do the same.
+
+Doctor migrates legacy state into SQLite (keeping a copy first), moves retired configuration keys, and enables or disables bundled skills to match the tools installed. On a volume with nothing to migrate, that last step is all it does. When it exits non-zero, the container starts the gateway anyway and prints doctor's last lines, with secrets redacted:
+
+```
+doctor: openclaw doctor --fix exited 1. The gateway checks the state it
+  left and refuses to start if a store it needs is unsafe. openclaw doctor said:
+```
+
+If the gateway then exits with code 78, its own message names the store. To see doctor's full report against the same volume:
+
+```bash
+docker run --rm -v /opt/poiesis/data:/root/.openclaw --entrypoint openclaw \
+  svanosselaer/poiesis-service:latest doctor --fix
+```
+
+### The Tool Profile Is Left Unset
+
+`tools.profile` chooses which tools the agent may call before `tools.deny` narrows it. The entrypoint deletes it on every start. Unset means no filtering of OpenClaw's core tools, which is what `full` meant in 2026.7.1 ("No restriction (same as unset)"). In 2026.9.37, `full` also turns on the optional tools of every enabled plugin — Firecrawl's `firecrawl_search` and `firecrawl_scrape`, when `FIRECRAWL_API_KEY` is set — and onboarding writes `full` on a new volume. The entrypoint used to write `full` itself; removing the key keeps the agent's tools what they were. `tools.deny: ["gateway"]` still applies.
+
+### Environment Variables in the Configuration
+
+`ANTHROPIC_API_KEY` and `GITHUB_TOKEN` are written under `env.vars`. 2026.7.1 accepted variables placed directly under `env`, which is where the entrypoint used to put them; 2026.9.37 rejects the configuration with `env: Unrecognized keys`. The entrypoint now removes them from there.

@@ -1,7 +1,7 @@
 - name: Install OpenClaw
   community.general.npm:
     name: openclaw
-    state: latest
+    version: "{{ openclaw_version }}"
     global: true
   become: true
 

@@ -1,6 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+redact_secrets() {
+  local text="$1" secret
+  for secret in "${ANTHROPIC_API_KEY:-}" "${GITHUB_TOKEN:-}" \
+                "${CLAUDE_CODE_OAUTH_TOKEN:-}" "${BRAVE_API_KEY:-}" \
+                "${FIRECRAWL_API_KEY:-}" "${TELEGRAM_BOT_TOKEN:-}" \
+                "${SLACK_BOT_TOKEN:-}" "${SLACK_APP_TOKEN:-}"; do
+    if [ -n "$secret" ]; then
+      text="${text//"$secret"/[redacted]}"
+    fi
+  done
+  printf '%s\n' "$text"
+}
+
 if [ ! -f "$HOME/.openclaw/openclaw.json" ]; then
   openclaw onboard --non-interactive --accept-risk \
     --mode local \
@@ -12,7 +25,20 @@ if [ ! -f "$HOME/.openclaw/openclaw.json" ]; then
     --skip-health
 fi
 
+doctor_status=0
+doctor_output="$(openclaw doctor --fix --non-interactive 2>&1)" || doctor_status=$?
+if [ "$doctor_status" -ne 0 ]; then
+  {
+    echo "doctor: openclaw doctor --fix exited ${doctor_status}. The gateway checks the state it"
+    echo '  left and refuses to start if a store it needs is unsafe. openclaw doctor said:'
+    redact_secrets "$doctor_output" | tail -n 5 | sed 's/^/    /'
+  } >&2
+fi
+
 node -e "
+  const chatModel = 'anthropic/claude-opus-5-5';
+  const utilityModel = 'anthropic/claude-haiku-5-5';
+
   const fs = require('fs');
   const configPath = process.env.HOME + '/.openclaw/openclaw.json';
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -48,31 +74,35 @@ node -e "
   config.agents = config.agents || {};
   config.agents.defaults = config.agents.defaults || {};
   config.agents.defaults.skipBootstrap = true;
-  config.agents.defaults.model = 'anthropic/claude-sonnet-4-6';
+  config.agents.defaults.model = chatModel;
   config.agents.defaults.heartbeat = {
     every: '59m',
     target: 'last',
-    model: 'anthropic/claude-haiku-4-5',
+    model: utilityModel,
     lightContext: true
   };
-  config.agents.defaults.compaction = { model: 'anthropic/claude-haiku-4-5' };
+  config.agents.defaults.compaction = { model: utilityModel };
   config.agents.defaults.models = {
-    'anthropic/claude-opus-4-6': {
+    [chatModel]: {
       params: { cacheRetention: 'long' }
     },
-    'anthropic/claude-haiku-4-5': {
+    [utilityModel]: {
       params: { cacheRetention: 'long' }
     }
   };
+  config.agents.defaults.modelPolicy = { allow: [chatModel, utilityModel] };
   config.tools = config.tools || {};
-  config.tools.profile = 'full';
+  delete config.tools.profile;
   delete config.tools.allow;
   config.tools.deny = ['gateway'];
   config.cron = { enabled: true };
   config.env = config.env || {};
-  config.env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+  delete config.env.ANTHROPIC_API_KEY;
+  delete config.env.GITHUB_TOKEN;
+  config.env.vars = config.env.vars || {};
+  config.env.vars.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
   if (process.env.GITHUB_TOKEN) {
-    config.env.GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+    config.env.vars.GITHUB_TOKEN = process.env.GITHUB_TOKEN;
   }
   delete config.agent;
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
