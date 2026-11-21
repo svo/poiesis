@@ -154,7 +154,7 @@ docker run -d \
   svanosselaer/poiesis-service:latest
 ```
 
-On startup, the entrypoint configures the Slack channel in socket mode and sets `plugins.entries.slack.enabled: true`. Slack is an external plugin that OpenClaw installs into the volume on first use, and it will not load an external plugin it has not been told to trust. Without that key the gateway logs `external plugin "slack" is installed without explicit trust` and never starts the channel.
+On startup, the entrypoint configures the Slack channel in socket mode and sets `plugins.entries.slack.enabled: true`. Slack is an external plugin that OpenClaw installs into the volume on first use, and it will not load an external plugin it has not been told to trust. Without that key the gateway logs `external plugin "slack" is installed without explicit trust` and does not start the channel. `openclaw doctor --fix` adds the key, but it runs before the channel is written, so on its own it would leave the first start that configures Slack without one.
 
 ## Using a Claude Subscription for Claude Code
 
