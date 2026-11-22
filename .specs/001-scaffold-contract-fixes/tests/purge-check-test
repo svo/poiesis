@@ -1,0 +1,343 @@
+#!/usr/bin/env bash
+#
+# poiesis-purge-check against the fixture trees: AC4, AC5, AC8, and the
+# allow-list behaviour PLAN.md § Risks asks to be deliberate and visible.
+
+set -uo pipefail
+
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=harness.sh
+. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/harness.sh"
+
+BACKEND_PROPERTIES="src/fixture_backend/resources/application.properties"
+
+# --- python-sprint-zero ----------------------------------------------------
+
+should_pass_when_the_backend_tree_is_clean() {
+  case_start "${FUNCNAME[0]}"
+  run_purge_check python-sprint-zero "$(copy_fixture backend-clean)"
+  assert_equals "exit status" "0" "$CHECK_STATUS"
+  assert_equals "no findings" "" "$(check_findings)"
+  case_end
+}
+
+should_pass_when_the_backend_was_purged_and_has_no_port_yet() {
+  case_start "${FUNCNAME[0]}"
+  local tree
+  tree="$(copy_fixture backend-clean)"
+  printf 'reload=false\nhost=0.0.0.0\n' > "${tree}/${BACKEND_PROPERTIES}"
+  run_purge_check python-sprint-zero "$tree"
+  assert_equals "exit status" "0" "$CHECK_STATUS"
+  assert_equals "no findings" "" "$(check_findings)"
+  case_end
+}
+
+should_fail_and_name_the_file_when_two_keys_share_a_line() {
+  case_start "${FUNCNAME[0]}"
+  run_purge_check python-sprint-zero "$(copy_fixture backend-two-keys)"
+  assert_not_equals "exit status" "0" "$CHECK_STATUS"
+  assert_contains "names the file" "$(check_findings)" "purge-check: ${BACKEND_PROPERTIES}: "
+  assert_contains "quotes the line" "$(check_findings)" "host=0.0.0.0port=8001"
+  case_end
+}
+
+should_detect_any_known_key_joined_onto_a_line() {
+  case_start "${FUNCNAME[0]}"
+  local tree joined
+  for joined in 'host=0.0.0.0reload=false' 'reload=falsehost=0.0.0.0' \
+                'port=8001admin=admin' 'admin=adminpassword=password'; do
+    tree="$(copy_fixture backend-clean)"
+    printf '%s\n' "$joined" > "${tree}/${BACKEND_PROPERTIES}"
+    run_purge_check python-sprint-zero "$tree"
+    assert_not_equals "exit status for ${joined}" "0" "$CHECK_STATUS"
+    assert_contains "quotes ${joined}" "$(check_findings)" "$joined"
+  done
+  case_end
+}
+
+should_not_mistake_a_query_string_for_a_second_key() {
+  case_start "${FUNCNAME[0]}"
+  local tree
+  tree="$(copy_fixture backend-clean)"
+  printf 'database_url=postgresql://db/app?host=db&port=5432\nhost=0.0.0.0\nport=8001\n' \
+    > "${tree}/${BACKEND_PROPERTIES}"
+  run_purge_check python-sprint-zero "$tree"
+  assert_equals "exit status" "0" "$CHECK_STATUS"
+  assert_equals "no findings" "" "$(check_findings)"
+  case_end
+}
+
+should_fail_when_application_properties_does_not_end_with_a_newline() {
+  case_start "${FUNCNAME[0]}"
+  local tree
+  tree="$(copy_fixture backend-no-newline)"
+  if [ -z "$(tail -c 1 "${tree}/${BACKEND_PROPERTIES}")" ]; then
+    fail "fixture damaged: backend-no-newline must not end with a newline (an editor or hook added one)"
+  fi
+  run_purge_check python-sprint-zero "$tree"
+  assert_not_equals "exit status" "0" "$CHECK_STATUS"
+  assert_contains "names the file" "$(check_findings)" "purge-check: ${BACKEND_PROPERTIES}: "
+  assert_contains "says why" "$(check_findings)" "newline"
+  case_end
+}
+
+should_fail_and_name_each_coconut_file_and_reference() {
+  case_start "${FUNCNAME[0]}"
+  run_purge_check python-sprint-zero "$(copy_fixture backend-coconut)"
+  assert_not_equals "exit status" "0" "$CHECK_STATUS"
+  assert_contains "names the file called coconut" "$(check_findings)" \
+    "purge-check: src/fixture_backend/domain/model/coconut.py: "
+  assert_contains "names the file that refers to it" "$(check_findings)" \
+    "purge-check: tests/fixture_backend/conftest.py: "
+  case_end
+}
+
+should_fail_on_a_coconut_reference_alone_in_any_case() {
+  case_start "${FUNCNAME[0]}"
+  local tree spelling
+  for spelling in coconut Coconut COCONUT; do
+    tree="$(copy_fixture backend-clean)"
+    printf 'from x import %sRepository\n' "$spelling" > "${tree}/src/fixture_backend/domain/model/widget.py"
+    run_purge_check python-sprint-zero "$tree"
+    assert_not_equals "exit status for ${spelling}" "0" "$CHECK_STATUS"
+    assert_contains "names the file for ${spelling}" "$(check_findings)" \
+      "purge-check: src/fixture_backend/domain/model/widget.py: "
+  done
+  case_end
+}
+
+should_fail_on_a_coconut_file_name_alone_in_any_case() {
+  case_start "${FUNCNAME[0]}"
+  local tree name
+  for name in test_coconut_controller.py CoconutRepository.py; do
+    tree="$(copy_fixture backend-clean)"
+    printf 'pass\n' > "${tree}/tests/fixture_backend/${name}"
+    run_purge_check python-sprint-zero "$tree"
+    assert_not_equals "exit status for ${name}" "0" "$CHECK_STATUS"
+    assert_contains "names ${name}" "$(check_findings)" "purge-check: tests/fixture_backend/${name}: "
+  done
+  case_end
+}
+
+should_fail_when_the_backend_tree_has_no_src() {
+  case_start "${FUNCNAME[0]}"
+  run_purge_check python-sprint-zero "$(copy_fixture)"
+  assert_equals "exit status" "1" "$CHECK_STATUS"
+  assert_contains "names src" "$(check_findings)" "purge-check: src: "
+  case_end
+}
+
+# --- www-qual-is -----------------------------------------------------------
+
+should_pass_when_the_frontend_tree_is_clean() {
+  case_start "${FUNCNAME[0]}"
+  run_purge_check www-qual-is "$(copy_fixture frontend-clean)"
+  assert_equals "exit status" "0" "$CHECK_STATUS"
+  assert_equals "no findings" "" "$(check_findings)"
+  case_end
+}
+
+should_ignore_git_node_modules_and_next_build_output() {
+  case_start "${FUNCNAME[0]}"
+  local tree dir
+  tree="$(copy_fixture frontend-clean)"
+  for dir in .git node_modules/some-package .next/cache; do
+    mkdir -p "${tree}/${dir}"
+    printf 'https://www.qual.is www-qual-is svanosselaer/-service\n' > "${tree}/${dir}/file"
+  done
+  run_purge_check www-qual-is "$tree"
+  assert_equals "exit status" "0" "$CHECK_STATUS"
+  assert_equals "no findings" "" "$(check_findings)"
+  case_end
+}
+
+should_ignore_a_submodule_git_file() {
+  case_start "${FUNCNAME[0]}"
+  local tree
+  tree="$(copy_fixture frontend-clean)"
+  printf 'gitdir: ../.git/modules/www-qual-is\n' > "${tree}/.git"
+  run_purge_check www-qual-is "$tree"
+  assert_equals "exit status" "0" "$CHECK_STATUS"
+  case_end
+}
+
+should_fail_when_the_package_name_is_blank() {
+  case_start "${FUNCNAME[0]}"
+  run_purge_check www-qual-is "$(copy_fixture frontend-blank-name)"
+  assert_not_equals "exit status" "0" "$CHECK_STATUS"
+  assert_contains "names package.json" "$(check_findings)" "purge-check: package.json: "
+  assert_contains "names package-lock.json" "$(check_findings)" "purge-check: package-lock.json: "
+  assert_contains "says the name is empty" "$(check_findings)" "name is empty"
+  case_end
+}
+
+should_name_every_file_where_the_template_name_was_deleted() {
+  case_start "${FUNCNAME[0]}"
+  local findings
+  run_purge_check www-qual-is "$(copy_fixture frontend-blank-name)"
+  findings="$(check_findings)"
+  assert_contains "Packer source name" "$findings" \
+    "purge-check: infrastructure/packer/service.pkr.hcl: line 1: "
+  assert_contains "Packer docker-tag repository" "$findings" \
+    "purge-check: infrastructure/packer/service.pkr.hcl: line 10: "
+  assert_contains "builder image in build.sh" "$findings" "purge-check: build.sh: line 6: "
+  assert_contains "development image in the Vagrantfile" "$findings" "purge-check: Vagrantfile: line 4: "
+  assert_contains "site URL in layout.tsx" "$findings" "purge-check: src/app/layout.tsx: line 3: "
+  assert_contains "about URL in layout.tsx" "$findings" "purge-check: src/app/layout.tsx: line 4: "
+  assert_contains "sitemap URL in robots.txt" "$findings" "purge-check: public/robots.txt: line 4: "
+  case_end
+}
+
+should_fail_on_each_deleted_name_fragment_alone() {
+  case_start "${FUNCNAME[0]}"
+  local tree fragment
+  for fragment in 'svanosselaer/-service' 'svanosselaer/-builder' 'svanosselaer/-development' \
+                  'source "docker" "-service"' 'source.docker.-service' \
+                  'https://www./about' 'new URL("https://www.")'; do
+    tree="$(copy_fixture frontend-clean)"
+    printf '%s\n' "$fragment" > "${tree}/damaged.txt"
+    run_purge_check www-qual-is "$tree"
+    assert_not_equals "exit status for ${fragment}" "0" "$CHECK_STATUS"
+    assert_contains "names the file for ${fragment}" "$(check_findings)" "purge-check: damaged.txt: line 1: "
+  done
+  case_end
+}
+
+should_fail_and_name_each_file_with_a_template_reference() {
+  case_start "${FUNCNAME[0]}"
+  local findings
+  run_purge_check www-qual-is "$(copy_fixture frontend-residue)"
+  findings="$(check_findings)"
+  assert_not_equals "exit status" "0" "$CHECK_STATUS"
+  assert_contains "README.md" "$findings" "purge-check: README.md: "
+  assert_contains "run.sh" "$findings" "purge-check: run.sh: "
+  assert_contains "robots.txt" "$findings" "purge-check: public/robots.txt: "
+  assert_contains "builder.pkr.hcl" "$findings" "purge-check: infrastructure/packer/builder.pkr.hcl: "
+  assert_contains "brand text, any case" "$findings" "purge-check: src/app/_components/footer.tsx: "
+  assert_not_contains "a clean file is not named" "$findings" "purge-check: package.json: "
+  case_end
+}
+
+should_fail_when_blog_content_remains() {
+  case_start "${FUNCNAME[0]}"
+  local findings
+  run_purge_check www-qual-is "$(copy_fixture frontend-residue)"
+  findings="$(check_findings)"
+  assert_contains "_posts" "$findings" "purge-check: _posts: "
+  assert_contains "blog route" "$findings" "purge-check: src/app/blog: "
+  case_end
+}
+
+should_fail_when_package_json_is_missing() {
+  case_start "${FUNCNAME[0]}"
+  run_purge_check www-qual-is "$(copy_fixture)"
+  assert_equals "exit status" "1" "$CHECK_STATUS"
+  assert_contains "names package.json" "$(check_findings)" "purge-check: package.json: "
+  case_end
+}
+
+# --- .purge-allow ----------------------------------------------------------
+
+should_pass_when_the_only_reference_is_allow_listed() {
+  case_start "${FUNCNAME[0]}"
+  run_purge_check www-qual-is "$(copy_fixture frontend-allowed)"
+  assert_equals "exit status" "0" "$CHECK_STATUS"
+  assert_equals "no findings" "" "$(check_findings)"
+  assert_contains "prints how many paths are allowed" "$CHECK_OUT" "1 path(s) allowed by .purge-allow"
+  assert_contains "names the allowed path" "$CHECK_OUT" "allowed by .purge-allow: NOTICE"
+  case_end
+}
+
+should_print_zero_allowed_paths_when_there_is_no_allow_list() {
+  case_start "${FUNCNAME[0]}"
+  run_purge_check www-qual-is "$(copy_fixture frontend-clean)"
+  assert_contains "prints the count anyway" "$CHECK_OUT" "0 path(s) allowed by .purge-allow"
+  case_end
+}
+
+should_still_fail_on_references_the_allow_list_does_not_name() {
+  case_start "${FUNCNAME[0]}"
+  local tree
+  tree="$(copy_fixture frontend-allowed)"
+  printf 'See https://www.qual.is\n' > "${tree}/CONTRIBUTING.md"
+  run_purge_check www-qual-is "$tree"
+  assert_not_equals "exit status" "0" "$CHECK_STATUS"
+  assert_contains "names the unlisted file" "$(check_findings)" "purge-check: CONTRIBUTING.md: "
+  assert_not_contains "does not name the listed file" "$(check_findings)" "purge-check: NOTICE: "
+  case_end
+}
+
+should_allow_a_listed_directory_and_everything_under_it() {
+  case_start "${FUNCNAME[0]}"
+  local tree
+  tree="$(copy_fixture frontend-clean)"
+  mkdir -p "${tree}/licenses/template"
+  printf 'qual.is\n' > "${tree}/licenses/template/LICENSE"
+  printf './licenses/  # attribution\n' > "${tree}/.purge-allow"
+  run_purge_check www-qual-is "$tree"
+  assert_equals "exit status" "0" "$CHECK_STATUS"
+  assert_contains "counts the entry" "$CHECK_OUT" "1 path(s) allowed by .purge-allow"
+  case_end
+}
+
+should_not_let_the_allow_list_excuse_a_blank_name_or_a_deleted_name() {
+  case_start "${FUNCNAME[0]}"
+  local tree
+  tree="$(copy_fixture frontend-blank-name)"
+  printf 'package.json\npackage-lock.json\ninfrastructure\nbuild.sh\nVagrantfile\nsrc\npublic\n' \
+    > "${tree}/.purge-allow"
+  run_purge_check www-qual-is "$tree"
+  assert_not_equals "exit status" "0" "$CHECK_STATUS"
+  assert_contains "blank name still reported" "$(check_findings)" "purge-check: package.json: "
+  assert_contains "deleted name still reported" "$(check_findings)" \
+    "purge-check: infrastructure/packer/service.pkr.hcl: "
+  case_end
+}
+
+# --- usage -----------------------------------------------------------------
+
+should_exit_2_on_bad_usage() {
+  case_start "${FUNCNAME[0]}"
+  local tree
+  tree="$(copy_fixture frontend-clean)"
+  run_purge_check
+  assert_equals "no arguments" "2" "$CHECK_STATUS"
+  run_purge_check www-qual-is
+  assert_equals "one argument" "2" "$CHECK_STATUS"
+  run_purge_check python-sprint-zero "$tree" extra
+  assert_equals "three arguments" "2" "$CHECK_STATUS"
+  run_purge_check sprint-zero "$tree"
+  assert_equals "unknown template" "2" "$CHECK_STATUS"
+  run_purge_check www-qual-is "${tree}/does-not-exist"
+  assert_equals "missing path" "2" "$CHECK_STATUS"
+  assert_contains "usage is printed" "$CHECK_ERR" "usage: poiesis-purge-check"
+  case_end
+}
+
+should_pass_when_the_backend_tree_is_clean
+should_pass_when_the_backend_was_purged_and_has_no_port_yet
+should_fail_and_name_the_file_when_two_keys_share_a_line
+should_detect_any_known_key_joined_onto_a_line
+should_not_mistake_a_query_string_for_a_second_key
+should_fail_when_application_properties_does_not_end_with_a_newline
+should_fail_and_name_each_coconut_file_and_reference
+should_fail_on_a_coconut_reference_alone_in_any_case
+should_fail_on_a_coconut_file_name_alone_in_any_case
+should_fail_when_the_backend_tree_has_no_src
+should_pass_when_the_frontend_tree_is_clean
+should_ignore_git_node_modules_and_next_build_output
+should_ignore_a_submodule_git_file
+should_fail_when_the_package_name_is_blank
+should_name_every_file_where_the_template_name_was_deleted
+should_fail_on_each_deleted_name_fragment_alone
+should_fail_and_name_each_file_with_a_template_reference
+should_fail_when_blog_content_remains
+should_fail_when_package_json_is_missing
+should_pass_when_the_only_reference_is_allow_listed
+should_print_zero_allowed_paths_when_there_is_no_allow_list
+should_still_fail_on_references_the_allow_list_does_not_name
+should_allow_a_listed_directory_and_everything_under_it
+should_not_let_the_allow_list_excuse_a_blank_name_or_a_deleted_name
+should_exit_2_on_bad_usage
+
+report_totals "purge-check-test"

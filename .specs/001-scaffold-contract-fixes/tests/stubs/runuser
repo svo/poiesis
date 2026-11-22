@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+#
+# Fake runuser: `runuser -u <user> -- <command>...` runs the command as the
+# current user with the environment it was given, which is what the real one
+# does for everything except HOME, SHELL, USER and LOGNAME. The image check
+# (PLAN.md task 20) confirms that half against the real runuser.
+
+set -u
+
+printf '%s\n' "$*" >> "${STUB_MARKERS:?STUB_MARKERS is not set}/runuser-calls"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -u) shift 2 ;;
+    --) shift; break ;;
+    *)
+      printf 'stub runuser: unexpected argument: %s\n' "$1" >&2
+      exit 64
+      ;;
+  esac
+done
+
+exec "$@"

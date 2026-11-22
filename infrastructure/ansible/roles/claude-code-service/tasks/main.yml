@@ -1,7 +1,15 @@
 - name: Install Claude Code
   community.general.npm:
     name: '@anthropic-ai/claude-code'
+    version: "{{ claude_code_version }}"
     global: true
+  become: true
+
+- name: Install poiesis-purge-check
+  ansible.builtin.copy:
+    src: bin/poiesis-purge-check
+    dest: /usr/local/bin/poiesis-purge-check
+    mode: '0755'
   become: true
 
 - name: Create claude user for non-root Claude Code execution

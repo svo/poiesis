@@ -1,0 +1,205 @@
+#!/usr/bin/env bash
+#
+# poiesis-purge-check <python-sprint-zero|www-qual-is> <path>
+#
+# Reports template residue in a service repository created from one of the
+# Poiesis templates. It decides nothing about what to purge or how to rewrite
+# it; the purge-template and scaffold-services skills do that. It only says
+# whether what they left behind is clean, so it can gate a push.
+#
+# Findings go to stderr, one per line:  purge-check: <file>: <reason>
+# A summary goes to stdout. Exit status: 0 clean, 1 findings, 2 bad usage.
+#
+#   python-sprint-zero  run after the purge, and again after rename and port
+#   www-qual-is         run after the rename (the name is still there before it)
+#
+# For www-qual-is, a `.purge-allow` file at <path> may list paths (one per
+# line, relative to <path>, `#` starts a comment) that mention the template on
+# purpose. A listed directory covers everything under it. The allow-list only
+# excuses mentions of www-qual-is and qual.is; every run prints what it allows.
+
+set -uo pipefail
+
+readonly USAGE='usage: poiesis-purge-check <python-sprint-zero|www-qual-is> <path>'
+
+# The keys python-sprint-zero's ApplicationSettings reads from
+# application.properties, plus the port the scaffolder adds.
+readonly PROPERTY_KEYS='admin|password|reload|host|port'
+
+# What is left when a template name is deleted instead of replaced:
+#   repository = "svanosselaer/www-qual-is-service"  ->  "svanosselaer/-service"
+#   source "docker" "www-qual-is-service"            ->  source "docker" "-service"
+#   sources = ["source.docker.www-qual-is-service"]  ->  "source.docker.-service"
+#   new URL("https://www.qual.is")                   ->  new URL("https://www.")
+#   "https://www.qual.is/about"                      ->  "https://www./about"
+DELETED_NAME_FRAGMENTS=(
+  '/-service'
+  '/-builder'
+  '/-development'
+  '"-service"'
+  '.-service'
+  '//www."'
+  'www./'
+)
+
+# Blog content the www-qual-is purge removes. Keep in step with the recipe in
+# skills/purge-template/SKILL.md.
+BLOG_PATHS=(
+  _posts
+  public/assets/blog
+  src/app/blog
+  src/app/posts
+  src/app/feed.xml
+  src/app/sitemap.ts
+  src/application/services/PostService.ts
+)
+
+usage_error() {
+  if [ -n "${1:-}" ]; then
+    printf 'purge-check: %s\n' "$1" >&2
+  fi
+  printf '%s\n' "$USAGE" >&2
+  exit 2
+}
+
+findings=0
+
+report() {
+  printf 'purge-check: %s: %s\n' "$1" "$2" >&2
+  findings=$((findings + 1))
+}
+
+# grep, with the given arguments, over every regular file outside version
+# control, dependencies, build output and the allow-list file itself. Each
+# line of output starts with a path relative to the tree, prefixed "./".
+grep_tree() {
+  find . \( -name .git -o -name node_modules -o -name .next \) -prune \
+    -o -type f ! -path ./.purge-allow -exec grep "$@" {} +
+}
+
+check_python_sprint_zero() {
+  local dir path hit properties found_properties=""
+
+  if [ ! -d src ]; then
+    report src 'missing; this is not a python-sprint-zero tree, or the purge removed it'
+    return
+  fi
+
+  for dir in src tests; do
+    [ -d "$dir" ] || continue
+    while IFS= read -r path; do
+      report "$path" 'named after the demo entity Coconut'
+    done < <(find "$dir" -iname '*coconut*' -print)
+    while IFS= read -r path; do
+      report "$path" 'still refers to the demo entity Coconut'
+    done < <(grep -rliI coconut "$dir")
+  done
+
+  while IFS= read -r properties; do
+    found_properties="yes"
+    # A second known key after the value, unless a query string (? or &)
+    # comes first: host=0.0.0.0port=8001 is a finding, ...?port=5432 is not.
+    while IFS= read -r hit; do
+      report "$properties" "line ${hit%%:*} holds two keys: ${hit#*:}"
+    done < <(grep -nE "=[^?&]*(${PROPERTY_KEYS})=" "$properties")
+    if [ -n "$(tail -c 1 "$properties")" ]; then
+      report "$properties" 'does not end with a newline, so the next key appended joins its last line'
+    fi
+  done < <(find src -path 'src/*/resources/application.properties' -type f)
+
+  if [ -z "$found_properties" ]; then
+    report 'src/*/resources/application.properties' 'missing; the service has no settings file'
+  fi
+}
+
+ALLOWED=()
+
+read_allow_list() {
+  local entry
+  [ -f .purge-allow ] || return 0
+  while IFS= read -r entry || [ -n "$entry" ]; do
+    entry="${entry%%#*}"
+    entry="${entry#"${entry%%[![:space:]]*}"}"
+    entry="${entry%"${entry##*[![:space:]]}"}"
+    entry="${entry#./}"
+    entry="${entry%/}"
+    [ -n "$entry" ] && ALLOWED+=("$entry")
+  done < .purge-allow
+}
+
+is_allowed() {
+  local entry
+  for entry in ${ALLOWED[@]+"${ALLOWED[@]}"}; do
+    case "$1" in
+      "$entry" | "$entry"/*) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+check_www_qual_is() {
+  local path hit fragment line entry name_file
+
+  read_allow_list
+
+  if [ ! -f package.json ]; then
+    report package.json 'missing; this is not a www-qual-is tree'
+  elif ! grep -qE '^[[:space:]]*"name"[[:space:]]*:' package.json; then
+    report package.json 'has no "name"'
+  fi
+  for name_file in package.json package-lock.json; do
+    [ -f "$name_file" ] || continue
+    while IFS= read -r hit; do
+      report "$name_file" "line ${hit%%:*}: name is empty; the template name was deleted instead of replaced"
+    done < <(grep -nE '"name"[[:space:]]*:[[:space:]]*""' "$name_file")
+  done
+
+  while IFS= read -r path; do
+    path="${path#./}"
+    is_allowed "$path" && continue
+    line="$(grep -nIiF -m 1 -e www-qual-is -e qual.is "$path")"
+    report "$path" "mentions www-qual-is or qual.is (first at line ${line%%:*})"
+  done < <(grep_tree -lIiF -e www-qual-is -e qual.is)
+
+  for fragment in "${DELETED_NAME_FRAGMENTS[@]}"; do
+    while IFS= read -r hit; do
+      hit="${hit#./}"
+      path="${hit%%:*}"
+      hit="${hit#*:}"
+      report "$path" "line ${hit%%:*}: '${fragment}' is what a deleted template name leaves"
+    done < <(grep_tree -HnIF -e "$fragment")
+  done
+
+  for path in "${BLOG_PATHS[@]}"; do
+    if [ -e "$path" ]; then
+      report "$path" 'blog content the purge removes is still present'
+    fi
+  done
+}
+
+[ "$#" -eq 2 ] || usage_error
+template="$1"
+root="$2"
+case "$template" in
+  python-sprint-zero | www-qual-is) ;;
+  *) usage_error "unknown template '${template}'" ;;
+esac
+[ -d "$root" ] || usage_error "'${root}' is not a directory"
+cd -- "$root" || usage_error "cannot enter '${root}'"
+
+case "$template" in
+  python-sprint-zero)
+    check_python_sprint_zero
+    printf 'purge-check: %s at %s: %d finding(s)\n' "$template" "$root" "$findings"
+    ;;
+  www-qual-is)
+    check_www_qual_is
+    printf 'purge-check: %s at %s: %d finding(s); %d path(s) allowed by .purge-allow\n' \
+      "$template" "$root" "$findings" "${#ALLOWED[@]}"
+    for entry in ${ALLOWED[@]+"${ALLOWED[@]}"}; do
+      printf 'purge-check: allowed by .purge-allow: %s\n' "$entry"
+    done
+    ;;
+esac
+
+[ "$findings" -eq 0 ]

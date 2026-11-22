@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#
+# Fake Claude Code. Records the POIESIS_* variables it was started with.
+
+set -u
+
+env | grep '^POIESIS_' | sort > "${STUB_MARKERS:?STUB_MARKERS is not set}/claude-env"

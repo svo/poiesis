@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+#
+# The entrypoint against stub openclaw, gh, git, node and runuser in a private
+# HOME (PLAN.md task 10 and 11).
+#
+# AC1, the half that needs no image: the cycle command in the generated
+# AGENTS.md carries both scaffold settings, and running it delivers them to
+# the process it starts. The other half, that the real runuser keeps them for
+# the `claude` user, is PLAN.md task 20.
+#
+# AC12: the image namespace defaults to the GitHub owner, and an invalid one
+# stops the container with a message that names the variable.
+
+set -uo pipefail
+
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=harness.sh
+. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/harness.sh"
+
+should_pass_both_settings_in_the_cycle_command() {
+  case_start "${FUNCNAME[0]}"
+  local command
+  run_entrypoint POIESIS_HOST_PORT_PREFIX=4 POIESIS_IMAGE_NAMESPACE=svanosselaer
+  assert_equals "exit status" "0" "$RUN_STATUS"
+  command="$(cycle_command)"
+  assert_contains "the cycle command starts Claude Code" "$command" "runuser -u claude -- claude -p"
+  assert_contains "passes the port prefix" "$command" 'POIESIS_HOST_PORT_PREFIX="4"'
+  assert_contains "passes the image namespace" "$command" 'POIESIS_IMAGE_NAMESPACE="svanosselaer"'
+  assert_contains "still passes the blog URL" "$command" 'POIESIS_BLOG_URL="https://blog.example/posts"'
+  assert_contains "still passes the GitHub owner" "$command" 'POIESIS_GITHUB_OWNER="svo"'
+  case_end
+}
+
+should_place_the_settings_before_runuser() {
+  case_start "${FUNCNAME[0]}"
+  local before
+  run_entrypoint POIESIS_HOST_PORT_PREFIX=4 POIESIS_IMAGE_NAMESPACE=svanosselaer
+  before="$(cycle_command | awk '/runuser/ { exit } { print }')"
+  assert_contains "port prefix is assigned before runuser" "$before" 'POIESIS_HOST_PORT_PREFIX="4"'
+  assert_contains "namespace is assigned before runuser" "$before" 'POIESIS_IMAGE_NAMESPACE="svanosselaer"'
+  case_end
+}
+
+should_deliver_the_settings_to_the_process_the_cycle_command_starts() {
+  case_start "${FUNCNAME[0]}"
+  run_entrypoint POIESIS_HOST_PORT_PREFIX=4 POIESIS_IMAGE_NAMESPACE=svanosselaer
+  run_cycle_command
+  assert_contains "the command went through runuser as claude" "$CYCLE_RUNUSER" "-u claude --"
+  assert_contains "claude saw the port prefix" "$CYCLE_ENV" "POIESIS_HOST_PORT_PREFIX=4"
+  assert_contains "claude saw the image namespace" "$CYCLE_ENV" "POIESIS_IMAGE_NAMESPACE=svanosselaer"
+  assert_contains "claude saw the GitHub owner" "$CYCLE_ENV" "POIESIS_GITHUB_OWNER=svo"
+  assert_contains "claude saw the blog URL" "$CYCLE_ENV" "POIESIS_BLOG_URL=https://blog.example/posts"
+  case_end
+}
+
+should_document_both_settings_and_how_they_travel() {
+  case_start "${FUNCNAME[0]}"
+  local section
+  run_entrypoint POIESIS_HOST_PORT_PREFIX=4 POIESIS_IMAGE_NAMESPACE=svanosselaer
+  section="$(scaffolding_section)"
+  assert_contains "names the port prefix" "$section" 'POIESIS_HOST_PORT_PREFIX'
+  assert_contains "states the port prefix" "$section" "\`4\`"
+  assert_contains "names the image namespace" "$section" 'POIESIS_IMAGE_NAMESPACE'
+  assert_contains "states the image namespace" "$section" "\`svanosselaer\`"
+  assert_contains "says they reach Claude Code in its environment" "$section" "environment"
+  case_end
+}
+
+should_default_the_namespace_to_the_github_owner_when_unset() {
+  case_start "${FUNCNAME[0]}"
+  run_entrypoint --omit POIESIS_IMAGE_NAMESPACE
+  assert_equals "exit status" "0" "$RUN_STATUS"
+  assert_contains "the command passes the owner" "$(cycle_command)" 'POIESIS_IMAGE_NAMESPACE="svo"'
+  if ! gateway_started; then
+    fail "the gateway did not start"
+  fi
+  case_end
+}
+
+should_default_the_namespace_when_it_is_set_but_empty() {
+  case_start "${FUNCNAME[0]}"
+  run_entrypoint POIESIS_IMAGE_NAMESPACE=
+  assert_equals "exit status" "0" "$RUN_STATUS"
+  assert_contains "the command passes the owner" "$(cycle_command)" 'POIESIS_IMAGE_NAMESPACE="svo"'
+  case_end
+}
+
+should_lowercase_the_owner_when_it_becomes_the_namespace() {
+  case_start "${FUNCNAME[0]}"
+  run_entrypoint --omit POIESIS_IMAGE_NAMESPACE POIESIS_GITHUB_OWNER=Qualis
+  assert_equals "an owner with capitals does not stop the container" "0" "$RUN_STATUS"
+  assert_contains "the namespace is the owner in lower case" "$(cycle_command)" 'POIESIS_IMAGE_NAMESPACE="qualis"'
+  assert_contains "the owner itself is unchanged" "$(cycle_command)" 'POIESIS_GITHUB_OWNER="Qualis"'
+  case_end
+}
+
+should_accept_valid_registry_namespaces() {
+  case_start "${FUNCNAME[0]}"
+  local namespace
+  for namespace in svanosselaer svo my-org my.org my_org a1 0x; do
+    run_entrypoint POIESIS_IMAGE_NAMESPACE="$namespace"
+    assert_equals "exit status for ${namespace}" "0" "$RUN_STATUS"
+    assert_contains "passes ${namespace}" "$(cycle_command)" "POIESIS_IMAGE_NAMESPACE=\"${namespace}\""
+  done
+  case_end
+}
+
+should_exit_non_zero_and_name_the_variable_when_the_namespace_is_invalid() {
+  case_start "${FUNCNAME[0]}"
+  local namespace
+  for namespace in Svanosselaer 'svan/osselaer' -svo svo- 'sv..o' 'sv--o' 'two words' 'sv"o'; do
+    run_entrypoint POIESIS_IMAGE_NAMESPACE="$namespace"
+    assert_not_equals "exit status for '${namespace}'" "0" "$RUN_STATUS"
+    assert_contains "names the variable for '${namespace}'" "$RUN_ERR" "POIESIS_IMAGE_NAMESPACE"
+    if gateway_started; then
+      fail "the gateway started with POIESIS_IMAGE_NAMESPACE='${namespace}'"
+    fi
+  done
+  case_end
+}
+
+should_export_the_defaulted_namespace_to_the_gateway() {
+  case_start "${FUNCNAME[0]}"
+  run_entrypoint --omit POIESIS_IMAGE_NAMESPACE
+  assert_contains "the gateway's environment carries the default" \
+    "$(cat "${RUN_DIR}/gateway-env" 2>/dev/null)" "POIESIS_IMAGE_NAMESPACE=svo"
+  case_end
+}
+
+should_still_fall_back_to_prefix_3_on_an_invalid_prefix() {
+  case_start "${FUNCNAME[0]}"
+  run_entrypoint POIESIS_HOST_PORT_PREFIX=0
+  assert_equals "exit status" "0" "$RUN_STATUS"
+  assert_contains "warns" "$RUN_ERR" "POIESIS_HOST_PORT_PREFIX"
+  assert_contains "passes the default" "$(cycle_command)" 'POIESIS_HOST_PORT_PREFIX="3"'
+  case_end
+}
+
+should_pass_both_settings_in_the_cycle_command
+should_place_the_settings_before_runuser
+should_deliver_the_settings_to_the_process_the_cycle_command_starts
+should_document_both_settings_and_how_they_travel
+should_default_the_namespace_to_the_github_owner_when_unset
+should_default_the_namespace_when_it_is_set_but_empty
+should_lowercase_the_owner_when_it_becomes_the_namespace
+should_accept_valid_registry_namespaces
+should_exit_non_zero_and_name_the_variable_when_the_namespace_is_invalid
+should_export_the_defaulted_namespace_to_the_gateway
+should_still_fall_back_to_prefix_3_on_an_invalid_prefix
+
+report_totals "entrypoint-contract-test"

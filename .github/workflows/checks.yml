@@ -1,0 +1,55 @@
+name: Checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    # 24.04 is pinned because its runner image ships shellcheck.
+    runs-on: ubuntu-24.04
+
+    timeout-minutes: 10
+
+    steps:
+      - id: checkout
+        name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - id: shellcheck
+        name: Shellcheck
+        run: |
+          shopt -s nullglob
+          scripts=(
+            infrastructure/ansible/roles/*/files/bin/*
+            infrastructure/ansible/roles/openclaw/files/entrypoint.sh
+            infrastructure/ansible/roles/claude-code/files/tmux-agent-status
+            bin/*
+            ./*.sh
+          )
+          shellcheck --version
+          printf 'checking %s\n' "${scripts[@]}"
+          shellcheck "${scripts[@]}"
+
+      - id: spec-tests
+        name: Spec tests
+        run: |
+          shopt -s nullglob
+          runs=(.specs/*/tests/run)
+          if [ "${#runs[@]}" -eq 0 ]; then
+            echo "::error title=No spec tests::no .specs/*/tests/run found"
+            exit 1
+          fi
+          status=0
+          for run in "${runs[@]}"; do
+            echo "::group::${run}"
+            if ! "$run"; then
+              echo "::error title=Spec tests failed::${run}"
+              status=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "$status"

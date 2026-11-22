@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+#
+# What the claude-code-service role puts in the image: the residue check on
+# PATH (PLAN.md task 3) and Claude Code at a pinned version (D8, the static
+# half of AC14). The built-image half is PLAN.md task 20.
+
+set -uo pipefail
+
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=harness.sh
+. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/harness.sh"
+
+TASKS="${ROLE_DIR}/tasks/main.yml"
+DEFAULTS="${ROLE_DIR}/defaults/main.yml"
+
+# task_block <name> — the YAML of the task with this name, up to the next task.
+task_block() {
+  awk -v name="- name: $1" '
+    $0 == name { in_task = 1; print; next }
+    in_task && /^- name: / { exit }
+    in_task { print }
+  ' "$TASKS"
+}
+
+should_pin_claude_code_in_the_role_defaults() {
+  case_start "${FUNCNAME[0]}"
+  assert_match "defaults/main.yml sets claude_code_version" \
+    '^claude_code_version: "?[0-9]+\.[0-9]+\.[0-9]+"?$' "$DEFAULTS"
+  case_end
+}
+
+should_install_claude_code_at_the_pinned_version() {
+  case_start "${FUNCNAME[0]}"
+  local block
+  block="$(task_block "Install Claude Code")"
+  assert_contains "the task installs Claude Code" "$block" "name: '@anthropic-ai/claude-code'"
+  assert_contains "at claude_code_version" "$block" 'version: "{{ claude_code_version }}"'
+  case_end
+}
+
+should_install_the_purge_check_on_path() {
+  case_start "${FUNCNAME[0]}"
+  local block
+  block="$(task_block "Install poiesis-purge-check")"
+  assert_contains "copies the script" "$block" "src: bin/poiesis-purge-check"
+  assert_contains "to /usr/local/bin" "$block" "dest: /usr/local/bin/poiesis-purge-check"
+  assert_contains "executable" "$block" "mode: '0755'"
+  if [ ! -f "$PURGE_CHECK" ]; then
+    fail "the role's source file ${PURGE_CHECK#"${REPO_ROOT}"/} does not exist"
+  fi
+  case_end
+}
+
+should_pin_claude_code_in_the_role_defaults
+should_install_claude_code_at_the_pinned_version
+should_install_the_purge_check_on_path
+
+report_totals "role-test"

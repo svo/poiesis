@@ -7,6 +7,7 @@
 [![Build Development](https://github.com/svo/poiesis/actions/workflows/development.yml/badge.svg)](https://github.com/svo/poiesis/actions/workflows/development.yml)
 [![Build Builder](https://github.com/svo/poiesis/actions/workflows/builder.yml/badge.svg)](https://github.com/svo/poiesis/actions/workflows/builder.yml)
 [![Build Service](https://github.com/svo/poiesis/actions/workflows/service.yml/badge.svg)](https://github.com/svo/poiesis/actions/workflows/service.yml)
+[![Checks](https://github.com/svo/poiesis/actions/workflows/checks.yml/badge.svg)](https://github.com/svo/poiesis/actions/workflows/checks.yml)
 
 Docker image running an [OpenClaw](https://docs.openclaw.ai) gateway that monitors a blog for posts articulating software project concepts and scaffolds private GitHub repositories from them for review.
 
@@ -47,6 +48,7 @@ Named after the Greek concept of bringing-forth — the act of making something 
 | What | Where | Currently |
 |---|---|---|
 | OpenClaw (service image) | `roles/openclaw/defaults/main.yml` → `openclaw_version` | `2026.9.37` |
+| Claude Code (service image) | `roles/claude-code-service/defaults/main.yml` → `claude_code_version` | `2.1.330` |
 | Node.js major (all three images) | `roles/node/defaults/main.yml` → `node_major` + `node_minimum_version` | `26`, at least `26.12.1` |
 
 OpenClaw used to install with `state: latest`, so a rebuild that changed nothing in this repository could install a different gateway. OpenClaw checks the Node version at startup and exits on one it does not support: 2026.9.37 wants `>=24.22.1 <25 || >=26.12.1`, and the images used to install Node 22.
@@ -62,6 +64,16 @@ Set `openclaw_version`. If the release needs a newer Node, set `node_major` and 
 
 Check that the model ids in `entrypoint.sh` are in the new release's catalog (see [Models](#models)) before landing the bump.
 
+### Bumping Claude Code
+
+Claude Code used to install unpinned, so two builds of the same commit could carry different versions, and the prompts and skills it runs could behave differently in each. A bump is now a deliberate change, like an OpenClaw bump:
+
+```bash
+npm view @anthropic-ai/claude-code dist-tags      # what is published
+```
+
+Set `claude_code_version`, rebuild the service image, and check that `claude --version` in it prints the new version. Then run the pipeline skills against the new version before landing the bump: in the image, with credentials, ask Claude Code headlessly (`claude -p … --output-format stream-json`) to run the `purge-template` skill on a copy of a `python-sprint-zero` checkout, and confirm the transcript shows the skill loading, with no refusal, and `poiesis-purge-check` passing. The development image is not pinned; it is for people, and only the service image runs unattended.
+
 ## Running
 
 ```bash
@@ -75,6 +87,7 @@ docker run -d \
   -e TELEGRAM_BOT_TOKEN="your-telegram-bot-token" \
   -e POIESIS_BLOG_URL="https://www.qual.is/blog" \
   -e POIESIS_GITHUB_OWNER="svo" \
+  -e POIESIS_IMAGE_NAMESPACE="svanosselaer" \
   -e POIESIS_CRON_SCHEDULE="0 8 * * 1" \
   -e POIESIS_TIMEZONE="Australia/Melbourne" \
   -v /opt/poiesis/data:/root/.openclaw \
@@ -101,6 +114,10 @@ On first run, the entrypoint automatically configures OpenClaw via non-interacti
 | `POIESIS_GITHUB_OWNER` | Yes | GitHub user or organisation to create repositories under |
 | `POIESIS_CRON_SCHEDULE` | Yes | Cron expression for blog monitoring runs |
 | `POIESIS_TIMEZONE` | Yes | Timezone for scheduling |
+| `POIESIS_HOST_PORT_PREFIX` | No | Single digit `1`–`9` (default `3`) placed in front of every guest port to make the host ports in a scaffolded project's Vagrantfile: guest `8001` becomes host `38001`. Any other value logs a warning and falls back to `3` |
+| `POIESIS_IMAGE_NAMESPACE` | No | Registry namespace for the image names a scaffold generates (`<namespace>/<project>-<service>-service`, in each service's Packer `docker-tag` and in the Vagrantfile). Defaults to `POIESIS_GITHUB_OWNER` in lower case. Must be lowercase letters and digits separated by single `.`, `_` or `-`; the container exits on startup, naming the variable, if it is not. Set it when your registry namespace differs from your GitHub owner (`svo` on GitHub, `svanosselaer` on Docker Hub) |
+
+Claude Code, which does the scaffolding, runs as the `claude` user and cannot read the workspace files under `/root`. The scheduled cycle command in `AGENTS.md` passes it `POIESIS_BLOG_URL`, `POIESIS_GITHUB_OWNER`, `POIESIS_HOST_PORT_PREFIX` and `POIESIS_IMAGE_NAMESPACE` in its environment.
 
 ## Telegram Integration
 
@@ -196,7 +213,7 @@ On startup, the entrypoint generates OpenClaw workspace files at `~/.openclaw/wo
 
 These files are injected into the agent's context at the start of every session, so Poiesis knows how to identify software concepts and scaffold projects immediately.
 
-All `POIESIS_*` variables are required — the container will fail on startup if any are missing. `GITHUB_TOKEN` is also required and validated separately.
+The `POIESIS_*` variables marked required above must be set — the container will fail on startup if any are missing. `GITHUB_TOKEN` is also required and validated separately.
 
 ## Models
 

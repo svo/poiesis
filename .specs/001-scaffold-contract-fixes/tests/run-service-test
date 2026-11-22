@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+#
+# run-service starts services through the project's Vagrantfile (AC13, D7).
+# Neither template has a Dockerfile (Packer builds the images), the
+# scaffold-hardening work removed NEXT_PUBLIC_* wiring, and a hand-written
+# `docker run` publishes ports without the host-port prefix.
+
+set -uo pipefail
+
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=harness.sh
+. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/harness.sh"
+
+SKILL="${SKILLS_DIR}/run-service/SKILL.md"
+
+should_start_and_stop_services_through_the_vagrantfile() {
+  case_start "${FUNCNAME[0]}"
+  assert_match "names the Vagrantfile" 'Vagrantfile' "$SKILL"
+  assert_match "starts with vagrant up" 'vagrant up' "$SKILL"
+  assert_match "stops with vagrant halt" 'vagrant halt' "$SKILL"
+  case_end
+}
+
+should_not_build_with_docker_or_pass_next_public_variables() {
+  case_start "${FUNCNAME[0]}"
+  assert_no_match "tells the reader to docker build" 'docker build' "$SKILL"
+  assert_no_match "mentions NEXT_PUBLIC" 'NEXT_PUBLIC' "$SKILL"
+  case_end
+}
+
+should_not_start_containers_by_hand() {
+  case_start "${FUNCNAME[0]}"
+  assert_no_match "starts a container with docker run" 'docker run' "$SKILL"
+  case_end
+}
+
+should_name_the_build_script_when_the_image_is_missing() {
+  case_start "${FUNCNAME[0]}"
+  assert_match "names the service's own build script" 'build-service\.sh' "$SKILL"
+  case_end
+}
+
+should_start_and_stop_services_through_the_vagrantfile
+should_not_build_with_docker_or_pass_next_public_variables
+should_not_start_containers_by_hand
+should_name_the_build_script_when_the_image_is_missing
+
+report_totals "run-service-test"

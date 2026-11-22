@@ -135,6 +135,18 @@ if ! [[ "$POIESIS_HOST_PORT_PREFIX" =~ ^[1-9]$ ]]; then
 fi
 export POIESIS_HOST_PORT_PREFIX
 
+image_namespace_source="POIESIS_IMAGE_NAMESPACE"
+if [ -z "${POIESIS_IMAGE_NAMESPACE:-}" ]; then
+  POIESIS_IMAGE_NAMESPACE="$(printf '%s' "$POIESIS_GITHUB_OWNER" | tr '[:upper:]' '[:lower:]')"
+  image_namespace_source="POIESIS_IMAGE_NAMESPACE (unset, so taken from POIESIS_GITHUB_OWNER)"
+fi
+if ! [[ "$POIESIS_IMAGE_NAMESPACE" =~ ^[a-z0-9]+([._-][a-z0-9]+)*$ ]]; then
+  echo "Error: ${image_namespace_source} is '${POIESIS_IMAGE_NAMESPACE}', which is not a valid registry namespace." >&2
+  echo "  Use lowercase letters and digits, separated by single '.', '_' or '-' (for example svanosselaer)." >&2
+  exit 1
+fi
+export POIESIS_IMAGE_NAMESPACE
+
 if [ -z "${GITHUB_TOKEN:-}" ]; then
   echo "Error: GITHUB_TOKEN is required for GitHub access" >&2
   exit 1
@@ -224,6 +236,8 @@ Run the following command from \`/tmp\`:
 cd /tmp && \\
 POIESIS_BLOG_URL="${POIESIS_BLOG_URL}" \\
 POIESIS_GITHUB_OWNER="${POIESIS_GITHUB_OWNER}" \\
+POIESIS_HOST_PORT_PREFIX="${POIESIS_HOST_PORT_PREFIX}" \\
+POIESIS_IMAGE_NAMESPACE="${POIESIS_IMAGE_NAMESPACE}" \\
 runuser -u claude -- claude -p "\$(cat /home/claude/.claude/prompts/monitor-and-scaffold.md)" \\
   --dangerously-skip-permissions
 \`\`\`
@@ -250,15 +264,21 @@ If no messaging channel is configured, write the summary to a file in the worksp
 
 ## Scaffolding configuration
 
-When Claude Code scaffolds a project, it must use the following host-port prefix
-for every host-mapped port in the generated Vagrantfile and in any document
-that references those ports (parent CLAUDE.md, README.md, .specs/initial/SPEC.md):
+Claude Code scaffolds with these two settings. The cycle command above passes them to
+it in its environment. Claude Code runs as \`claude\` and cannot read this file, so keep
+both assignments in the command whenever you run it; without them it falls back to
+prefix \`3\` and the GitHub owner as the namespace.
 
-\`POIESIS_HOST_PORT_PREFIX\`: \`${POIESIS_HOST_PORT_PREFIX}\` (single digit 1-9; default 3)
+\`POIESIS_HOST_PORT_PREFIX\`: \`${POIESIS_HOST_PORT_PREFIX}\` (single digit 1-9; default 3).
+The prefix for every host-mapped port in the generated Vagrantfile and in any document
+that references those ports (parent CLAUDE.md, README.md, .specs/initial/SPEC.md). With
+prefix \`${POIESIS_HOST_PORT_PREFIX}\`, guest port \`8001\` maps to host port \`${POIESIS_HOST_PORT_PREFIX}8001\` and guest port \`3000\` to
+host port \`${POIESIS_HOST_PORT_PREFIX}3000\`.
 
-For example, with prefix \`${POIESIS_HOST_PORT_PREFIX}\` a guest port \`8001\` maps to host port
-\`${POIESIS_HOST_PORT_PREFIX}8001\` and a guest port \`3000\` maps to host port \`${POIESIS_HOST_PORT_PREFIX}3000\`. The scaffolder must not
-hard-code the prefix \`2\` or any other value — read this one.
+\`POIESIS_IMAGE_NAMESPACE\`: \`${POIESIS_IMAGE_NAMESPACE}\` (default: the GitHub owner).
+The registry namespace for every generated image name, \`<namespace>/<project>-<service>-service\`,
+in each service's \`docker-tag\` and in the Vagrantfile. Repositories still go under the
+GitHub owner.
 
 ## Context
 

@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+#
+# Fake openclaw for the entrypoint checks. Onboarding writes an empty config,
+# doctor succeeds, and the gateway records that it started and what it was
+# given in its environment, then exits instead of serving.
+
+set -u
+
+markers="${STUB_MARKERS:?STUB_MARKERS is not set}"
+
+case "${1:-}" in
+  onboard)
+    mkdir -p "${HOME}/.openclaw"
+    printf '{}\n' > "${HOME}/.openclaw/openclaw.json"
+    ;;
+  doctor)
+    ;;
+  gateway)
+    env | grep '^POIESIS_' | sort > "${markers}/gateway-env"
+    touch "${markers}/gateway-started"
+    ;;
+  *)
+    printf 'stub openclaw: unexpected arguments: %s\n' "$*" >&2
+    exit 64
+    ;;
+esac

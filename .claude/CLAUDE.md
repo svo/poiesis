@@ -67,7 +67,7 @@ Substitute `builder` or `development` for `service` to build the other images. `
 
 ### Environment
 
-Required at service startup: every `POIESIS_*` variable listed in `README.md`, plus `GITHUB_TOKEN` (validated separately) and `ANTHROPIC_API_KEY`. The container fails fast if any are missing. Claude Code can optionally use `CLAUDE_CODE_OAUTH_TOKEN` (a long-lived subscription token) instead of the API key.
+Required at service startup: every `POIESIS_*` variable `README.md` marks as required, plus `GITHUB_TOKEN` (validated separately) and `ANTHROPIC_API_KEY`. The container fails fast if any are missing. `POIESIS_HOST_PORT_PREFIX` and `POIESIS_IMAGE_NAMESPACE` are optional; the entrypoint passes both to Claude Code in its environment through the cycle command in `AGENTS.md`, because Claude Code runs as `claude` and cannot read `/root`. Claude Code can optionally use `CLAUDE_CODE_OAUTH_TOKEN` (a long-lived subscription token) instead of the API key.
 
 Telegram and Slack integrations are optional — see `README.md`. The Slack app manifest lives at `infrastructure/slack-app-manifest.json`.
 

@@ -2,7 +2,15 @@ You are scaffolding a new software project based on a blog post concept. The blo
 
 Read CLAUDE.md to understand the project concept, then follow this process.
 
-Read the host-port prefix from the workspace `AGENTS.md` (single digit `1`–`9`, default `3`). Use it as `${PORT_PREFIX}` for every host-mapped port you assign in the Vagrantfile and in any document that references those ports. `AGENTS.md` is the source of truth — do not read the prefix from `process.env`.
+Read two settings from the environment, print them once, and use these values for the whole run:
+
+```bash
+echo "PORT_PREFIX=${POIESIS_HOST_PORT_PREFIX:-3}"
+echo "IMAGE_NAMESPACE=${POIESIS_IMAGE_NAMESPACE:-$GITHUB_OWNER}"
+```
+
+- `${PORT_PREFIX}` (single digit `1`–`9`, default `3`) prefixes every host-mapped port you assign in the Vagrantfile and in any document that references those ports.
+- `${IMAGE_NAMESPACE}` (default: the GitHub owner from CLAUDE.md) is the registry namespace for every image name: `docker-tag` repositories and Vagrantfile images. GitHub repositories live under `${GITHUB_OWNER}`; images live under `${IMAGE_NAMESPACE}`. The two can differ.
 
 ## Step 1: Decompose into Services
 
@@ -53,21 +61,22 @@ __pycache__/
 
 ## Step 3: Purge Template Scaffolding
 
-Immediately after each `git submodule add`, before any renaming or editing, run the purge skill:
+Immediately after each `git submodule add`, before any renaming or editing, invoke the `purge-template` skill with the template and the submodule path:
 
-```bash
-# Backend service
-/purge-template python-sprint-zero services/${service}
-
-# Frontend
-/purge-template www-qual-is ui
+```
+/purge-template python-sprint-zero services/${service}   # backend
+/purge-template www-qual-is ui                          # frontend
 ```
 
-This removes demo entities (Coconut), template content (blog posts, blog routes), template-only features (basic auth, unless the concept explicitly requires per-service auth), and known template defects (`application.properties` newline). The skill verifies its own work and fails loudly if residue remains.
+This removes demo entities (Coconut), template content (blog posts, blog routes), template-only features (basic auth, unless the concept explicitly requires per-service auth), and ends `application.properties` with a newline. For a backend the skill finishes by running `poiesis-purge-check python-sprint-zero .`; the frontend check runs after Step 4, once the template name has been replaced.
 
-## Step 4: Rename Template References
+## Step 4: Rename Template References and Set the Port
 
-For Python services, rename all template references in three forms:
+Work inside the submodule (`cd services/${service}` or `cd ui`).
+
+### Backend (`python-sprint-zero`)
+
+Rename all template references in three forms:
 
 ```bash
 underscore=$(echo ${service} | tr '-' '_')
@@ -86,6 +95,48 @@ find . -depth -name "*python-sprint-zero*" | while read f; do
   mv "$f" "$(echo $f | sed "s/python-sprint-zero/${PROJECT_NAME}-${service}/g")"
 done
 ```
+
+Then write the service's guest port from Step 1 into `application.properties` as a line of its own. The purge left the file ending in a newline, so append; never edit the `host` line:
+
+```bash
+props=$(find src -path '*/resources/application.properties')
+sed -i '/^port=/d' "$props"
+printf 'port=%s\n' "${guest_port}" >> "$props"
+```
+
+### Frontend (`www-qual-is`)
+
+Replace the template name with `${PROJECT_NAME}-${service}` in file contents and in file and directory names:
+
+```bash
+fgrep -rl www-qual-is . | xargs sed -i "s/www-qual-is/${PROJECT_NAME}-${service}/g"
+find . -depth -name "*www-qual-is*" | while read f; do
+  mv "$f" "$(echo $f | sed "s/www-qual-is/${PROJECT_NAME}-${service}/g")"
+done
+```
+
+Then rewrite each remaining `qual.is` reference in context. Never delete the text with `sed`:
+
+- **Site URL** — `https://www.qual.is` in `metadataBase`, canonical and Open Graph URLs, JSON-LD and `src/lib/constants.ts`: read a `SITE_URL` setting that defaults to `http://localhost:${PORT_PREFIX}3000`.
+- **Brand text** — `qual.is` in the navigation, footer, page titles, `not-found`, the web manifest, `README.md` and `run.sh`: the project title.
+- **Analytics** — remove the analytics script from `src/app/layout.tsx` and its entries in the content-security-policy in `next.config.js`.
+- **`public/robots.txt`** — disallow everything (`User-agent: *`, `Disallow: /`) and drop the `Sitemap:` line.
+- **Contact address** — remove the `mailto:` link to a `qual.is` address.
+- **Template reference notes** under `.claude/skills/*/references/` that quote the blog's code: delete them.
+- Update the tests that assert on any of the above.
+
+If a reference must stay on purpose (for example a licence attribution), list its path, relative to the submodule root, in `.purge-allow`, one per line. The check prints every path that file allows.
+
+### Check before pushing
+
+From the parent repo, run the residue check for every submodule once its rename and port are done, before its first push:
+
+```bash
+poiesis-purge-check python-sprint-zero services/${service}   # each backend
+poiesis-purge-check www-qual-is ui                          # frontend
+```
+
+It names each file that still carries template residue and exits non-zero. Fix what it names and run it again. Do not push a submodule, or the parent's reference to it, until its check exits 0.
 
 ## Step 5: Wire Frontend Backend URLs via API Proxy Routes
 
@@ -141,13 +192,13 @@ Then:
 
 ## Step 6: Configure Ports and Networking
 
-Generate a Vagrantfile in the parent repo using the **Docker provider** with one `config.vm.define` block per service. Use `${PORT_PREFIX}` (from `AGENTS.md`) as the host-port prefix; guest ports come from each service's assignment in Step 1.
+Generate a Vagrantfile in the parent repo using the **Docker provider** with one `config.vm.define` block per service. Use `${PORT_PREFIX}` (from the environment) as the host-port prefix and `${IMAGE_NAMESPACE}` for every image; guest ports come from each service's assignment in Step 1.
 
 ```ruby
 Vagrant.configure("2") do |config|
   config.vm.define "<backend-service>" do |s|
     s.vm.provider :docker do |d|
-      d.image = "${GITHUB_OWNER}/${PROJECT_NAME}-<backend-service>-service:latest"
+      d.image = "${IMAGE_NAMESPACE}/${PROJECT_NAME}-<backend-service>-service:latest"
       d.name  = "${PROJECT_NAME}-<backend-service>"
       d.ports = ["${PORT_PREFIX}XXXX:XXXX"]   # ${PORT_PREFIX}XXXX on host -> XXXX in container
       d.env   = {
@@ -158,7 +209,7 @@ Vagrant.configure("2") do |config|
 
   config.vm.define "<frontend>" do |s|
     s.vm.provider :docker do |d|
-      d.image = "${GITHUB_OWNER}/${PROJECT_NAME}-<frontend>-service:latest"
+      d.image = "${IMAGE_NAMESPACE}/${PROJECT_NAME}-<frontend>-service:latest"
       d.name  = "${PROJECT_NAME}-<frontend>"
       d.ports = ["${PORT_PREFIX}3000:3000"]
       d.env   = {
@@ -176,6 +227,7 @@ Rules:
 - Backend-to-backend wiring uses `APP_<OTHER>_URL` server-only env vars routed through `host.docker.internal` and the host-mapped port.
 - Frontend backend URLs are server-only env vars (`<SERVICE>_URL`) — never `NEXT_PUBLIC_*`. They are read inside the API route handlers from Step 5.
 - Every host port uses `${PORT_PREFIX}` resolved at scaffold time.
+- Every image is `${IMAGE_NAMESPACE}/${PROJECT_NAME}-<service>-service:latest`.
 
 ## Step 7: Update CLAUDE.md Files and Docker Tags
 
@@ -191,7 +243,13 @@ For each service, update `.claude/CLAUDE.md` by adding after the top-level title
 <Key domain entities and behaviours this service owns.>
 ```
 
-Edit `infrastructure/packer/service.pkr.hcl` in each service so that `docker-tag` is exactly `${GITHUB_OWNER}/${PROJECT_NAME}-${service}-service`. This applies to **both** backend and frontend services — the frontend tag must not contain `www-qual-is`.
+Edit `infrastructure/packer/service.pkr.hcl` in each service so that `docker-tag` is exactly `${IMAGE_NAMESPACE}/${PROJECT_NAME}-${service}-service`. This applies to **both** backend and frontend services — the frontend tag must not contain `www-qual-is`.
+
+The templates' other image names (the builder, development, mock and documentation repositories in `infrastructure/packer/*.pkr.hcl`, the root `*.sh` scripts and each service's own `Vagrantfile`) use the template's namespace, `svanosselaer/`. In each service, replace it with the configured one; nothing changes when the two are equal:
+
+```bash
+fgrep -rl 'svanosselaer/' infrastructure/packer ./*.sh Vagrantfile | xargs sed -i "s|svanosselaer/|${IMAGE_NAMESPACE}/|g"
+```
 
 Then update the parent `CLAUDE.md`, `README.md`, and (later) `.specs/initial/SPEC.md` so every host-port reference matches the resolved `${PORT_PREFIX}` and every image name matches the canonical docker-tag. The parent docs and the Vagrantfile must agree.
 
@@ -202,7 +260,7 @@ The new project repository needs its own Claude Code skills so that anyone worki
 For each skill:
 
 1. Read the source SKILL.md from `/home/claude/.claude/skills/<skill-name>/SKILL.md`
-2. Preserve the frontmatter structure (name, description, allowed-tools, etc.)
+2. Preserve the frontmatter structure (name, description, allowed-tools, etc.), with one exception: the project copy of `scaffold-services` must carry `disable-model-invocation: true`, which the source does not. It creates repositories, so in a project only a person should start it.
 3. Adapt the body as described below
 4. Write to `.claude/skills/<skill-name>/SKILL.md` in the project repository
 
@@ -218,13 +276,13 @@ These skills are project-agnostic. Copy them verbatim:
 
 Adapt these skills to reference the concrete services, ports, and structure created in the preceding steps:
 
-- **`run-service`** — replace generic references with the actual service names, ports (from Step 6), and docker-tags (from each service's `infrastructure/packer/service.pkr.hcl`).
+- **`run-service`** — replace generic references with the actual service names (the `config.vm.define` names), host ports and images from the Vagrantfile (Step 6).
 
 - **`health-check`** — populate the expected services and ports based on the services created in Step 2 and ports assigned in Step 6.
 
 - **`explore-architecture`** — reference the actual `services/` and `ui/` directories and the domain concepts identified in Step 1.
 
-- **`scaffold-services`** — set the GitHub owner and project name from CLAUDE.md. Set the next available port based on ports already assigned in Step 6.
+- **`scaffold-services`** — set the GitHub owner and project name from CLAUDE.md. Set the next available port based on ports already assigned in Step 6. Write the resolved `${PORT_PREFIX}` and `${IMAGE_NAMESPACE}` into its Settings section in place of the environment lookups: a person running it in the project has no `POIESIS_*` variables. Add `disable-model-invocation: true` to its frontmatter.
 
 - **`add-integration`** — reference the actual service names and which service handles what role based on the decomposition from Step 1.
 
