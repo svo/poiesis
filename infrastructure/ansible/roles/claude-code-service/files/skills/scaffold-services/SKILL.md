@@ -1,8 +1,7 @@
 ---
 name: scaffold-services
-description: Creates new service repositories from templates and adds them as git submodules. Handles repo creation from svo/python-sprint-zero or svo/www-qual-is templates, template purge, reference renaming, port assignment using POIESIS_HOST_PORT_PREFIX, Docker-provider Vagrantfile updates, docker-tag normalisation, and CLAUDE.md configuration. Frontend invocations also wire same-origin API proxy routes.
-disable-model-invocation: true
-allowed-tools: Bash(gh *), Bash(git *), Bash(cd *), Bash(find *), Bash(fgrep *), Bash(sed *), Bash(mv *), Read, Edit, Write, Grep, Glob
+description: Creates new service repositories from templates and adds them as git submodules. Handles repo creation from svo/python-sprint-zero or svo/www-qual-is templates, template purge, reference renaming, port assignment using POIESIS_HOST_PORT_PREFIX, image naming using POIESIS_IMAGE_NAMESPACE, Docker-provider Vagrantfile updates, docker-tag normalisation, and CLAUDE.md configuration. Frontend invocations also wire same-origin API proxy routes.
+allowed-tools: Bash(gh *), Bash(git *), Bash(cd *), Bash(find *), Bash(fgrep *), Bash(sed *), Bash(mv *), Bash(xargs *), Bash(printf *), Bash(poiesis-purge-check *), Read, Edit, Write, Grep, Glob
 ---
 
 # Scaffold Services
@@ -16,14 +15,24 @@ Creates new service repositories from templates and wires them into the project 
 Arguments:
 - `$0`: Service name in kebab-case (e.g. `event-processor`)
 - `$1`: Template — either `python` (uses `svo/python-sprint-zero`) or `frontend` (uses `svo/www-qual-is`)
-- `$2`: Guest port (host port becomes `${PORT_PREFIX}$2` where `${PORT_PREFIX}` is read from the workspace `AGENTS.md`)
+- `$2`: Guest port (host port becomes `${PORT_PREFIX}$2`; see Settings)
 - `$3`: One-line description of the service
 
-The host-port prefix is the value of `POIESIS_HOST_PORT_PREFIX` documented in the workspace `AGENTS.md` (single digit `1`–`9`, default `3`). Read it once at the start of the run and reuse it.
+## Settings
+
+Read both from the environment once, at the start of the run, and reuse them:
+
+```bash
+PORT_PREFIX="${POIESIS_HOST_PORT_PREFIX:-3}"
+IMAGE_NAMESPACE="${POIESIS_IMAGE_NAMESPACE:-$GITHUB_OWNER}"
+```
+
+- `${PORT_PREFIX}` is a single digit `1`–`9` (default `3`) placed in front of every guest port to make its host port.
+- `${IMAGE_NAMESPACE}` is the registry namespace for every image name (default: the GitHub owner). GitHub repositories live under `${GITHUB_OWNER}`; images live under `${IMAGE_NAMESPACE}`. The two can differ.
 
 ## Steps
 
-1. **Read the project's CLAUDE.md** to determine the GitHub owner and project name. Read `~/.openclaw/workspace/AGENTS.md` to determine `${PORT_PREFIX}`.
+1. **Read the project's CLAUDE.md** to determine the GitHub owner and project name. Read `${PORT_PREFIX}` and `${IMAGE_NAMESPACE}` from the environment (see Settings).
 
 2. **Create the GitHub repo from template:**
 
@@ -48,19 +57,16 @@ For frontend:
 git submodule add https://github.com/${GITHUB_OWNER}/${PROJECT_NAME}-$0.git ui
 ```
 
-4. **Purge template scaffolding** by invoking the `/purge-template` skill immediately after the submodule is added, before any renaming:
+4. **Purge template scaffolding** by invoking the `purge-template` skill immediately after the submodule is added, before any renaming:
 
-```bash
-# Backend
-/purge-template python-sprint-zero services/$0
-
-# Frontend
-/purge-template www-qual-is ui
+```
+/purge-template python-sprint-zero services/$0   # backend
+/purge-template www-qual-is ui                   # frontend
 ```
 
-5. **Rename template references** (Python services only):
+5. **Rename template references and set the port.** Work inside the submodule (`cd services/$0` or `cd ui`).
 
-Derive the underscore and titlecase forms of the service name, then:
+For a backend (`python`), rename the template references in three forms:
 
 ```bash
 underscore=$(echo $0 | tr '-' '_')
@@ -80,14 +86,52 @@ find . -depth -name "*python-sprint-zero*" | while read f; do
 done
 ```
 
-6. **Update the parent Vagrantfile** — append a new `config.vm.define` block using the Docker provider. Do not use `config.vm.network "forwarded_port"` — every service is its own container.
+Then write the guest port into `application.properties` as a line of its own. The purge left the file ending in a newline, so append; never edit the `host` line:
+
+```bash
+props=$(find src -path '*/resources/application.properties')
+sed -i '/^port=/d' "$props"
+printf 'port=%s\n' "$2" >> "$props"
+```
+
+For a frontend (`frontend`), replace the template name with `${PROJECT_NAME}-$0` in file contents and in file and directory names:
+
+```bash
+fgrep -rl www-qual-is . | xargs sed -i "s/www-qual-is/${PROJECT_NAME}-$0/g"
+find . -depth -name "*www-qual-is*" | while read f; do
+  mv "$f" "$(echo $f | sed "s/www-qual-is/${PROJECT_NAME}-$0/g")"
+done
+```
+
+Then rewrite each remaining `qual.is` reference in context. Never delete the text with `sed`:
+
+- **Site URL** — `https://www.qual.is` in `metadataBase`, canonical and Open Graph URLs, JSON-LD and `src/lib/constants.ts`: read a `SITE_URL` setting that defaults to `http://localhost:${PORT_PREFIX}$2`.
+- **Brand text** — `qual.is` in the navigation, footer, page titles, `not-found`, the web manifest, `README.md` and `run.sh`: the project title.
+- **Analytics** — remove the analytics script from `src/app/layout.tsx` and its entries in the content-security-policy in `next.config.js`.
+- **`public/robots.txt`** — disallow everything (`User-agent: *`, `Disallow: /`) and drop the `Sitemap:` line.
+- **Contact address** — remove the `mailto:` link to a `qual.is` address.
+- **Template reference notes** under `.claude/skills/*/references/` that quote the blog's code: delete them.
+- Update the tests that assert on any of the above.
+
+If a reference must stay on purpose (for example a licence attribution), list its path, relative to the submodule root, in `.purge-allow`, one per line. The check prints every path that file allows.
+
+6. **Check before pushing.** From the parent repo, after the rename and port are done:
+
+```bash
+poiesis-purge-check python-sprint-zero services/$0   # backend
+poiesis-purge-check www-qual-is ui                   # frontend
+```
+
+It names each file that still carries template residue and exits non-zero. Fix what it names and run it again. Do not push the submodule, or the parent's reference to it, until it exits 0.
+
+7. **Update the parent Vagrantfile** — append a new `config.vm.define` block using the Docker provider. Do not use `config.vm.network "forwarded_port"` — every service is its own container.
 
 For a backend:
 
 ```ruby
 config.vm.define "$0" do |s|
   s.vm.provider :docker do |d|
-    d.image = "${GITHUB_OWNER}/${PROJECT_NAME}-$0-service:latest"
+    d.image = "${IMAGE_NAMESPACE}/${PROJECT_NAME}-$0-service:latest"
     d.name  = "${PROJECT_NAME}-$0"
     d.ports = ["${PORT_PREFIX}$2:$2"]
     d.env   = {
@@ -103,7 +147,7 @@ For a frontend:
 ```ruby
 config.vm.define "$0" do |s|
   s.vm.provider :docker do |d|
-    d.image = "${GITHUB_OWNER}/${PROJECT_NAME}-$0-service:latest"
+    d.image = "${IMAGE_NAMESPACE}/${PROJECT_NAME}-$0-service:latest"
     d.name  = "${PROJECT_NAME}-$0"
     d.ports = ["${PORT_PREFIX}$2:$2"]
     d.env   = {
@@ -116,26 +160,23 @@ end
 
 When this skill is invoked with `--template frontend`, also wire the API proxy route handlers — see "Frontend wiring" below.
 
-7. **Update the service's `.claude/CLAUDE.md`** — add a `## Project Purpose` section with `### Core Domain Concepts` subsection after the top-level title. Include the guest port and the host port (`${PORT_PREFIX}$2`).
+8. **Update the service's `.claude/CLAUDE.md`** — add a `## Project Purpose` section with `### Core Domain Concepts` subsection after the top-level title. Include the guest port and the host port (`${PORT_PREFIX}$2`).
 
-8. **Normalise the docker-tag** in `infrastructure/packer/service.pkr.hcl`. Edit the `docker-tag` value to exactly:
+9. **Normalise the image names** in the service. Edit the `docker-tag` value in `infrastructure/packer/service.pkr.hcl` to exactly:
 
 ```
-${GITHUB_OWNER}/${PROJECT_NAME}-$0-service
+${IMAGE_NAMESPACE}/${PROJECT_NAME}-$0-service
 ```
 
-This applies to **both** backend and frontend services. For the frontend, verify the resulting tag does not contain the substring `www-qual-is`:
+This applies to **both** backend and frontend services. The template's other image names (the builder, development, mock and documentation repositories in `infrastructure/packer/*.pkr.hcl`, the root `*.sh` scripts and the service's own `Vagrantfile`) use the template's namespace, `svanosselaer/`. Replace it with the configured one; nothing changes when the two are equal:
 
 ```bash
-if fgrep -q 'www-qual-is' infrastructure/packer/service.pkr.hcl; then
-  echo 'docker-tag still references www-qual-is' >&2
-  exit 1
-fi
+fgrep -rl 'svanosselaer/' infrastructure/packer ./*.sh Vagrantfile | xargs sed -i "s|svanosselaer/|${IMAGE_NAMESPACE}/|g"
 ```
 
-9. **Commit and push** the submodule changes, then update the parent repo's submodule reference.
+10. **Commit and push** the submodule changes, then update the parent repo's submodule reference. Step 6 must have exited 0 first.
 
-10. **Update the parent docs** (`CLAUDE.md`, `README.md`, and `.specs/initial/SPEC.md` if present) so every host-port and image-name reference matches what was actually generated. The Vagrantfile is the source of truth — the docs must agree with it.
+11. **Update the parent docs** (`CLAUDE.md`, `README.md`, and `.specs/initial/SPEC.md` if present) so every host-port and image-name reference matches what was actually generated. The Vagrantfile is the source of truth — the docs must agree with it.
 
 ## Frontend wiring (`$1 == frontend`)
 
@@ -143,7 +184,7 @@ When the template is `frontend`, also generate one Next.js App Router catch-all 
 
 For each backend `<service>` create `ui/src/app/api/<service>/[...path]/route.ts` exporting `GET`, `POST`, `PUT`, `PATCH`, `DELETE` that:
 
-- Read `process.env.<SERVICE>_URL` (server-only — populated by the frontend's `docker.env` in Step 6).
+- Read `process.env.<SERVICE>_URL` (server-only — populated by the frontend's `docker.env` in Step 7).
 - Build `proxyURL = new URL(path.join('/') + request.nextUrl.search, UPSTREAM)`.
 - Forward via `fetch(new Request(proxyURL, request))` inside `try/catch`.
 - On `fetch` failure return HTTP 502 with a structured JSON error body (`{ error, service, detail }`).

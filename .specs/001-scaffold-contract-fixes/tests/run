@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+#
+# Runs every 001 check. Needs bash, coreutils, grep, find, awk, sed and
+# ShellCheck. No network, no tokens, no image. Exits 0 only when all pass.
+
+set -uo pipefail
+
+tests_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd -- "${tests_dir}/../../.." && pwd)"
+purge_check="${repo_root}/infrastructure/ansible/roles/claude-code-service/files/bin/poiesis-purge-check"
+
+failed=()
+
+check() {
+  local name="$1"
+  shift
+  printf '\n== %s ==\n' "$name"
+  if "$@"; then
+    printf 'PASS %s\n' "$name"
+  else
+    printf 'FAIL %s\n' "$name" >&2
+    failed+=("$name")
+  fi
+}
+
+test_files=()
+for file in "${tests_dir}"/*-test; do
+  [ -f "$file" ] && test_files+=("$file")
+done
+
+check "test files discovered" test "${#test_files[@]}" -gt 0
+check "poiesis-purge-check exists" test -f "$purge_check"
+# Fails, rather than skips, when shellcheck is not installed.
+check "shellcheck available" command -v shellcheck
+check "shellcheck poiesis-purge-check" shellcheck -s bash "$purge_check"
+check "shellcheck harness, stubs and tests" \
+  shellcheck -x -P "$tests_dir" "${tests_dir}/run" "${tests_dir}/harness.sh" \
+  "${tests_dir}"/stubs/* "${test_files[@]}"
+
+for file in "${test_files[@]}"; do
+  check "$(basename "$file")" bash "$file"
+done
+
+printf '\n'
+if [ ${#failed[@]} -eq 0 ]; then
+  printf 'All 001 checks passed.\n'
+  exit 0
+fi
+
+printf 'Failing checks:\n' >&2
+printf '  %s\n' "${failed[@]}" >&2
+exit 1

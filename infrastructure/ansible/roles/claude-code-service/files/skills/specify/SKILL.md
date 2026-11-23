@@ -1,7 +1,6 @@
 ---
 name: specify
 description: Defines feature specifications using spec-driven development. Produces structured requirements with user stories, acceptance criteria, and domain model impacts. Use when the project needs a clear feature definition before implementation.
-disable-model-invocation: true
 allowed-tools: Read, Write, Glob, Grep
 ---
 

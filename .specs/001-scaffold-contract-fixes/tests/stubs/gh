@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+#
+# Fake gh. Accepts what the entrypoint asks of it and records the call.
+
+set -u
+
+printf '%s\n' "$*" >> "${STUB_MARKERS:?STUB_MARKERS is not set}/gh-calls"
+case "${1:-} ${2:-}" in
+  "auth login") cat > /dev/null ;;
+  "auth setup-git") ;;
+  *)
+    printf 'stub gh: unexpected arguments: %s\n' "$*" >&2
+    exit 64
+    ;;
+esac

@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+#
+# The purge and rename instructions the scaffolder follows (D2, D3, D4).
+# purge-check-test shows the check works; this shows the instructions call it,
+# at the points PLAN.md tasks 4-7 put it, and no longer do what broke.
+
+set -uo pipefail
+
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=harness.sh
+. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/harness.sh"
+
+PURGE="${SKILLS_DIR}/purge-template/SKILL.md"
+RENAMERS=(
+  "${PROMPTS_DIR}/monitor-and-scaffold.md"
+  "${PROMPTS_DIR}/scaffold-project.md"
+  "${SKILLS_DIR}/scaffold-services/SKILL.md"
+)
+
+should_not_delete_the_frontend_template_name() {
+  case_start "${FUNCNAME[0]}"
+  assert_no_match "purge-template deletes www-qual-is or qual.is (D2)" \
+    's/www-qual-is//|s/qual\\\.is//' "$PURGE"
+  case_end
+}
+
+should_not_verify_with_a_grep_that_cannot_match() {
+  case_start "${FUNCNAME[0]}"
+  assert_no_match "purge-template runs fgrep -E, which exits 2 (D3)" 'fgrep[^|]*-[[:alnum:]]*E' "$PURGE"
+  case_end
+}
+
+should_end_application_properties_with_a_newline() {
+  case_start "${FUNCNAME[0]}"
+  assert_match "purge-template appends a missing final newline (D4)" "sed -i -e '\\\$a\\\\'" "$PURGE"
+  case_end
+}
+
+should_run_the_check_at_the_end_of_the_backend_purge() {
+  case_start "${FUNCNAME[0]}"
+  assert_match "purge-template runs poiesis-purge-check for python-sprint-zero" \
+    '^poiesis-purge-check python-sprint-zero \.$' "$PURGE"
+  case_end
+}
+
+should_rename_the_frontend_template() {
+  case_start "${FUNCNAME[0]}"
+  local file
+  for file in "${RENAMERS[@]}"; do
+    assert_match "${file#"${REPO_ROOT}"/} replaces www-qual-is in file contents" \
+      's/www-qual-is/\$\{' "$file"
+    assert_match "${file#"${REPO_ROOT}"/} replaces www-qual-is in file names" \
+      'find \. -depth -name "\*www-qual-is\*"' "$file"
+    assert_match "${file#"${REPO_ROOT}"/} offers .purge-allow for intentional references" \
+      '\.purge-allow' "$file"
+  done
+  case_end
+}
+
+should_write_the_port_on_its_own_line() {
+  case_start "${FUNCNAME[0]}"
+  local file
+  for file in "${RENAMERS[@]}"; do
+    assert_match "${file#"${REPO_ROOT}"/} appends port=<guest> as its own line" \
+      "printf 'port=%s\\\\n'" "$file"
+  done
+  case_end
+}
+
+should_check_every_submodule_before_it_is_pushed() {
+  case_start "${FUNCNAME[0]}"
+  local file
+  for file in "${RENAMERS[@]}"; do
+    assert_match "${file#"${REPO_ROOT}"/} runs the backend check" \
+      'poiesis-purge-check python-sprint-zero ' "$file"
+    assert_match "${file#"${REPO_ROOT}"/} runs the frontend check" \
+      'poiesis-purge-check www-qual-is ' "$file"
+  done
+  case_end
+}
+
+should_not_delete_the_frontend_template_name
+should_not_verify_with_a_grep_that_cannot_match
+should_end_application_properties_with_a_newline
+should_run_the_check_at_the_end_of_the_backend_purge
+should_rename_the_frontend_template
+should_write_the_port_on_its_own_line
+should_check_every_submodule_before_it_is_pushed
+
+report_totals "recipe-test"

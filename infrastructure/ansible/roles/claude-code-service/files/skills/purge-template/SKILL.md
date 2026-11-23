@@ -1,8 +1,7 @@
 ---
 name: purge-template
 description: Removes demo content, template-only features, and known template defects from a freshly-added submodule cloned from svo/python-sprint-zero or svo/www-qual-is. Call immediately after `git submodule add`, before any renaming or editing. Leaves the submodule ready for project-specific content.
-disable-model-invocation: true
-allowed-tools: Bash(find *), Bash(fgrep *), Bash(grep *), Bash(rm *), Bash(sed *), Bash(test *), Bash(cd *), Read, Edit, Write, Grep, Glob
+allowed-tools: Bash(find *), Bash(fgrep *), Bash(grep *), Bash(rm *), Bash(sed *), Bash(xargs *), Bash(test *), Bash(cd *), Bash(poiesis-purge-check *), Read, Edit, Write, Grep, Glob
 ---
 
 # Purge Template
@@ -23,7 +22,7 @@ Arguments:
 
 2. **Apply the recipe** for the template type (below).
 
-3. **Run the verification grep** at the end of the recipe. If it finds any remaining template residue, fail loudly — do not proceed.
+3. **Run the check** at the end of the recipe. `poiesis-purge-check` names each file that still carries template residue and exits non-zero. Fix what it names and run it again; do not commit until it exits 0. For `www-qual-is` the check runs later, after the rename step, because the template name is still present until then.
 
 4. **Stage and commit** the purge inside the submodule:
    ```bash
@@ -47,9 +46,10 @@ find src tests -type f \( \
   -iname '*coconut*' \
 \) -print -delete
 
-# Fix the application.properties newline bug (host and port on one line)
+# End application.properties with a newline. The template's last line is
+# `host=0.0.0.0` with no newline, so a key appended later would join it.
 find src -path '*/resources/application.properties' -print0 \
-  | xargs -0 sed -i -E 's/^(host=[^[:space:]]+)[[:space:]]*(port=)/\1\n\2/'
+  | xargs -0 sed -i -e '$a\'
 
 # Remove basic-auth wiring (template-only; services wanting auth add it back later)
 for f in $(fgrep -rl -e 'basic_auth' -e 'BasicAuth' -e 'HTTPBasic' src tests 2>/dev/null); do
@@ -70,15 +70,12 @@ done
 find src -path '*/resources/application.properties' -print0 \
   | xargs -0 sed -i -E '/^basic_auth\./d'
 
-# Verification — the recipe is incomplete if any of these return a match
-if fgrep -r -i 'coconut' src tests 2>/dev/null; then
-  echo 'purge-template: coconut residue remains' >&2
-  exit 1
-fi
-if fgrep -rn -E 'host=.+port=' src 2>/dev/null; then
-  echo 'purge-template: host=/port= still on one line in application.properties' >&2
-  exit 1
-fi
+# Files that are not named after Coconut still refer to it (conftest.py,
+# main.py, test_main.py and others). Edit each one the check names: remove the
+# Coconut imports, routes, fixtures and tests. Do NOT remove unrelated logic.
+
+# Check — the recipe is incomplete until this exits 0
+poiesis-purge-check python-sprint-zero .
 ```
 
 Notes:
@@ -130,35 +127,10 @@ rm -f e2e/blog.spec.ts
 rm -f e2e/about.spec.ts
 rm -f e2e/post.spec.ts
 rm -f e2e/homepage.spec.ts
-
-# Strip remaining qual.is / www-qual-is text references
-for f in $(fgrep -rl -e 'qual.is' -e 'www-qual-is' . 2>/dev/null \
-           | grep -v '^./.git/' \
-           | grep -v '^./node_modules/'); do
-  sed -i -E 's/www-qual-is//g; s/qual\.is//g' "$f"
-done
-
-# Verification — recipe is incomplete if remaining references are unintentional
-residue=$(fgrep -r -e 'qual.is' -e 'www-qual-is' . 2>/dev/null \
-          | grep -v '^./.git/' \
-          | grep -v '^./node_modules/' || true)
-if [ -n "$residue" ]; then
-  echo 'purge-template: qual.is / www-qual-is references remain:' >&2
-  echo "$residue" >&2
-  echo 'If any are intentional (e.g. licence attribution), edit this skill to allow-list them.' >&2
-  exit 1
-fi
-
-# Verify blog residue is gone
-for f in _posts src/app/blog src/app/posts src/app/feed.xml src/app/sitemap.ts \
-         src/application/services/PostService.ts; do
-  if [ -e "$f" ]; then
-    echo "purge-template: $f still present" >&2
-    exit 1
-  fi
-done
 ```
+
+Do **not** delete `www-qual-is` or `qual.is` text here. Deleting the name leaves an empty `package.json` name and image names such as `svanosselaer/-service`. The rename step replaces the name with `<project>-<service>` and rewrites the remaining `qual.is` references in context; `poiesis-purge-check www-qual-is .` runs after it and also confirms the blog paths above are gone.
 
 ## Coupling to upstream templates
 
-This skill is tightly coupled to the current shape of `svo/python-sprint-zero` and `svo/www-qual-is`. When either template grows a new demo feature, rename occurs, or restructures, update the corresponding recipe. A silent drift (new demo files slipping through) is contained by the verification greps at the end of each recipe — they fail the scaffolding run loudly rather than producing a polluted project.
+This skill is tightly coupled to the current shape of `svo/python-sprint-zero` and `svo/www-qual-is`. When either template grows a new demo feature, rename occurs, or restructures, update the corresponding recipe, and the blog paths and property keys in `poiesis-purge-check` (`infrastructure/ansible/roles/claude-code-service/files/bin/` in the Poiesis repository). A silent drift (new demo files slipping through) is contained by `poiesis-purge-check`: it fails the scaffolding run loudly rather than letting a polluted project be pushed.

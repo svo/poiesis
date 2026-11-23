@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+#
+# Where the shipped prompts and skills tell the scaffolder to get its settings
+# from (AC2, D1), and which name they give images (D6, the static half of AC11).
+#
+# Claude Code runs as `claude` with HOME=/home/claude. /root is mode 700, so
+# nothing under it, including the workspace AGENTS.md, is readable by that
+# process. The settings arrive in its environment instead.
+
+set -uo pipefail
+
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=harness.sh
+. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/harness.sh"
+
+SHIPPED=()
+while IFS= read -r file; do
+  SHIPPED+=("$file")
+done < <(find "$PROMPTS_DIR" "$SKILLS_DIR" -type f -name '*.md' | sort)
+
+# The three documents that tell the scaffolder how to name ports and images.
+SCAFFOLDERS=(
+  "${PROMPTS_DIR}/monitor-and-scaffold.md"
+  "${PROMPTS_DIR}/scaffold-project.md"
+  "${SKILLS_DIR}/scaffold-services/SKILL.md"
+)
+
+should_find_the_shipped_prompts_and_skills() {
+  case_start "${FUNCNAME[0]}"
+  if [ "${#SHIPPED[@]}" -lt 12 ]; then
+    fail "expected at least 12 shipped prompts and skills, found ${#SHIPPED[@]} (moved?)"
+  fi
+  case_end
+}
+
+should_not_name_a_path_under_root() {
+  case_start "${FUNCNAME[0]}"
+  assert_no_match "a prompt or skill names a path under /root" '(^|[^[:alnum:]_.])/root(/|[^[:alnum:]_]|$)' "${SHIPPED[@]}"
+  case_end
+}
+
+should_not_name_the_openclaw_workspace() {
+  case_start "${FUNCNAME[0]}"
+  assert_no_match "a prompt or skill names the OpenClaw state directory" '\.openclaw' "${SHIPPED[@]}"
+  assert_no_match "a prompt or skill names the gateway's AGENTS.md" 'AGENTS\.md' "${SHIPPED[@]}"
+  case_end
+}
+
+should_not_forbid_reading_the_environment() {
+  case_start "${FUNCNAME[0]}"
+  assert_no_match "a prompt or skill forbids reading the environment" \
+    "([Dd]o not|[Dd]on't|[Nn]ever) read [^.]*(process\\.env|the environment|environment variable)" \
+    "${SHIPPED[@]}"
+  case_end
+}
+
+should_read_both_settings_from_the_environment() {
+  case_start "${FUNCNAME[0]}"
+  local file
+  for file in "${SCAFFOLDERS[@]}"; do
+    assert_match "${file#"${REPO_ROOT}"/} reads POIESIS_HOST_PORT_PREFIX" \
+      '\$\{?POIESIS_HOST_PORT_PREFIX' "$file"
+    assert_match "${file#"${REPO_ROOT}"/} reads POIESIS_IMAGE_NAMESPACE" \
+      '\$\{?POIESIS_IMAGE_NAMESPACE' "$file"
+  done
+  case_end
+}
+
+should_name_images_with_the_image_namespace() {
+  case_start "${FUNCNAME[0]}"
+  local file
+  for file in "${SCAFFOLDERS[@]}"; do
+    assert_match "${file#"${REPO_ROOT}"/} names Vagrantfile images with the namespace" \
+      'd\.image *= *"\$\{IMAGE_NAMESPACE\}/' "$file"
+    assert_match "${file#"${REPO_ROOT}"/} names the docker-tag with the namespace" \
+      'docker-tag.*\$\{IMAGE_NAMESPACE\}/|^\$\{IMAGE_NAMESPACE\}/.*-service$' "$file"
+  done
+  assert_no_match "an image is named after the GitHub owner" 'GITHUB_OWNER\}/[^ ]*-service' "${SCAFFOLDERS[@]}"
+  case_end
+}
+
+should_find_the_shipped_prompts_and_skills
+should_not_name_a_path_under_root
+should_not_name_the_openclaw_workspace
+should_not_forbid_reading_the_environment
+should_read_both_settings_from_the_environment
+should_name_images_with_the_image_namespace
+
+report_totals "settings-test"

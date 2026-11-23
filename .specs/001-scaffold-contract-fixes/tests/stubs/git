@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#
+# Fake git, so the entrypoint's `git config --global` never touches a real
+# configuration. Records the call.
+
+set -u
+
+printf '%s\n' "$*" >> "${STUB_MARKERS:?STUB_MARKERS is not set}/git-calls"

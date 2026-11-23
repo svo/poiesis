@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+#
+# The skills the pipeline prompts tell Claude Code to use must be loadable by
+# the model (AC9, D5). `disable-model-invocation: true` makes Claude Code
+# refuse the Skill tool for that skill and tell the model not to reproduce
+# its steps another way.
+
+set -uo pipefail
+
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=harness.sh
+. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/harness.sh"
+
+PIPELINE_SKILLS=(purge-template specify plan scaffold-services)
+TASKS="${ROLE_DIR}/tasks/main.yml"
+
+# frontmatter <file> — the lines between the opening and closing "---".
+frontmatter() {
+  awk 'NR == 1 && $0 != "---" { exit } NR == 1 { next } $0 == "---" { exit } { print }' "$1"
+}
+
+should_carry_frontmatter_naming_the_skill() {
+  case_start "${FUNCNAME[0]}"
+  local skill
+  for skill in "${PIPELINE_SKILLS[@]}"; do
+    assert_contains "${skill} has frontmatter with its name" \
+      "$(frontmatter "${SKILLS_DIR}/${skill}/SKILL.md")" "name: ${skill}"
+  done
+  case_end
+}
+
+should_not_disable_model_invocation_for_the_pipeline_skills() {
+  case_start "${FUNCNAME[0]}"
+  local skill
+  for skill in "${PIPELINE_SKILLS[@]}"; do
+    if frontmatter "${SKILLS_DIR}/${skill}/SKILL.md" \
+        | grep -qE '^disable-model-invocation:[[:space:]]*true[[:space:]]*$'; then
+      fail "${skill}/SKILL.md sets disable-model-invocation: true; the pipeline cannot load it"
+    fi
+  done
+  case_end
+}
+
+should_install_each_pipeline_skill_into_the_image() {
+  case_start "${FUNCNAME[0]}"
+  local skill
+  for skill in "${PIPELINE_SKILLS[@]}"; do
+    assert_match "tasks/main.yml installs ${skill}" "^[[:space:]]+- ${skill}\$" "$TASKS"
+  done
+  case_end
+}
+
+should_restore_the_flag_on_the_project_copy_of_scaffold_services() {
+  case_start "${FUNCNAME[0]}"
+  assert_match "scaffold-project.md gives the project copy of scaffold-services the flag back" \
+    'scaffold-services.*disable-model-invocation: true' "${PROMPTS_DIR}/scaffold-project.md"
+  case_end
+}
+
+should_carry_frontmatter_naming_the_skill
+should_not_disable_model_invocation_for_the_pipeline_skills
+should_install_each_pipeline_skill_into_the_image
+should_restore_the_flag_on_the_project_copy_of_scaffold_services
+
+report_totals "frontmatter-test"

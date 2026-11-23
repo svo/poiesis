@@ -1,7 +1,6 @@
 ---
 name: plan
 description: Creates a technical implementation plan from a feature specification. Produces a step-by-step plan with tasks, identifies coordination points, and generates an ordered task list with explicit Phase 0 template tear-out and a spec-criterion-to-task coverage table. Use after /specify has produced a SPEC.md.
-disable-model-invocation: true
 allowed-tools: Read, Write, Glob, Grep
 ---
 

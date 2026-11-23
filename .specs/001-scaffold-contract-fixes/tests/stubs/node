@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#
+# Fake node. The entrypoint's inline scripts edit openclaw.json, which these
+# checks do not read; they only need the call to succeed.
+
+exit 0
